@@ -30,7 +30,7 @@ class SafetyGuardConfig:
     alert_cooldown_sec: int = 300
 
 class SafetyGuard:
-    def _init_(self, executor, telegram=None,
+    def __init__(self, executor, telegram=None,
                  config: Optional[SafetyGuardConfig] = None):
         self.executor = executor
         self.telegram = telegram
