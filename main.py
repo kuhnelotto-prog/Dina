@@ -57,7 +57,7 @@ async def main():
 
     executor = BitgetExecutor(ExecutorConfig(
         symbol=symbols[0],
-        leverage=int(os.getenv("LEVERAGE", 10)),
+        leverage=int(os.getenv("LEVERAGE", 3)),
     ))
     await executor.setup()
 
