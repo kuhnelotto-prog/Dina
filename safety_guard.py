@@ -30,7 +30,7 @@ class SafetyGuardConfig:
     alert_cooldown_sec: int = 300
 
 class SafetyGuard:
-    def init(self, executor, telegram=None,
+    def _init_(self, executor, telegram=None,
                  config: Optional[SafetyGuardConfig] = None):
         self.executor = executor
         self.telegram = telegram
@@ -93,8 +93,7 @@ class SafetyGuard:
         qty = float(pos.get("total") or 0)
         if qty > 0 and entry > 0:
             pnl_pct = min(pnl_pct, unrealised / (qty * entry) * 100)
-
-> GetClaw:
+            
 if pnl_pct <= -self.cfg.max_fast_drawdown_pct:
             msg = (f"⚠️ DRAWDOWN: {symbol} {side.upper()} "
                    f"просадка {pnl_pct:.2f}% "
@@ -177,8 +176,6 @@ if pnl_pct <= -self.cfg.max_fast_drawdown_pct:
             logger.info("SafetyGuard [DRY-RUN]: SL не выставлен для %s", symbol)
 
     # ── Вспомогательные ─────────────────────────
-
-> GetClaw:
 async def _get_open_positions(self) -> list:
         try:
             return await self.executor.get_open_positions() or []
