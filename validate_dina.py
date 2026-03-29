@@ -166,7 +166,7 @@ def test_risk_manager():
         R.ok("Лимит позиций → BLOCKED")
 
         # Закрытие
-        rm.on_trade_closed(50)
+        rm.on_trade_closed("BTCUSDT", 50)
         status3 = asyncio.get_event_loop().run_until_complete(
             rm.check(portfolio, symbol="ETHUSDT", entry_price=3000, sl_price=2950, confidence=0.8)
         )
@@ -183,13 +183,16 @@ def test_executor():
     try:
         from bitget_executor import BitgetExecutor, ExecutorConfig, OrderRequest, OrderType
 
-        cfg = ExecutorConfig(dry_run=True, db_path=":memory:", allowlist_symbols=["BTCUSDT"])
+        import tempfile
+        temp_db = tempfile.NamedTemporaryFile(delete=False)
+        temp_db.close()
+        cfg = ExecutorConfig(dry_run=True, db_path=temp_db.name, allowlist_symbols=["BTCUSDT"])
         executor = BitgetExecutor(cfg)
         loop = asyncio.get_event_loop()
         loop.run_until_complete(executor.setup())
         R.ok("setup() прошёл")
 
-        req = OrderRequest(direction="long", size_usd=1000, entry_price=50000, sl_price=49000, tp_price=51000)
+        req = OrderRequest(symbol="BTCUSDT", direction="long", size_usd=1000, entry_price=50000, sl_price=49000, tp_price=51000)
         result = loop.run_until_complete(executor.open_position(req))
         assert result.success and result.dry_run
         R.ok("open_position() dry‑run успешен")
@@ -203,7 +206,11 @@ def test_learning_engine():
     R.suite("6. LearningEngine")
     try:
         from learning_engine import LearningEngine
-        engine = LearningEngine(db_path=":memory:")
+        import tempfile
+        temp_db = tempfile.NamedTemporaryFile(delete=False)
+        temp_db.close()
+        engine = LearningEngine(db_path=temp_db.name)
+        # после теста можно удалить файл, но для простоты оставим
         loop = asyncio.get_event_loop()
         loop.run_until_complete(engine.setup())
         R.ok("setup() прошёл")
@@ -216,8 +223,8 @@ def test_learning_engine():
         R.ok("record_trade() записал 8 сделок")
 
         weights = loop.run_until_complete(engine.get_weights())
-        assert isinstance(weights, dict) and len(weights) > 0
-        R.ok(f"get_weights() вернул {len(weights)} весов")
+        assert hasattr(weights, 'weights') and len(weights.weights) > 0
+        R.ok(f"get_weights() вернул {len(weights.weights)} весов")
     except Exception as e:
         R.fail("LearningEngine", traceback.format_exc())
 
@@ -256,7 +263,10 @@ def test_attribution():
     R.suite("8. PerformanceAttribution")
     try:
         from performance_attribution import PerformanceAttribution, SignalSource
-        att = PerformanceAttribution(db_path=":memory:")
+        import tempfile
+        temp_db = tempfile.NamedTemporaryFile(delete=False)
+        temp_db.close()
+        att = PerformanceAttribution(db_path=temp_db.name)
         loop = asyncio.get_event_loop()
         loop.run_until_complete(att.setup())
         R.ok("setup() прошёл")
@@ -326,7 +336,10 @@ def test_integration():
 
         portfolio = PortfolioState(balance=10000)
         rm = RiskManager(sizer_config=SizerConfig(base_risk_pct=1.0), max_open_positions=1, daily_loss_limit=5.0)
-        executor = BitgetExecutor(ExecutorConfig(dry_run=True, db_path=":memory:", allowlist_symbols=["BTCUSDT"]))
+        import tempfile
+        temp_db = tempfile.NamedTemporaryFile(delete=False)
+        temp_db.close()
+        executor = BitgetExecutor(ExecutorConfig(dry_run=True, db_path=temp_db.name, allowlist_symbols=["BTCUSDT"]))
         loop.run_until_complete(executor.setup())
 
         entry = 50000
@@ -336,7 +349,7 @@ def test_integration():
         assert status.allowed
         size = status.size_result.position_usd
 
-        req = OrderRequest(direction="long", size_usd=size, entry_price=entry, sl_price=sl, tp_price=51000)
+        req = OrderRequest(symbol="BTCUSDT", direction="long", size_usd=size, entry_price=entry, sl_price=sl, tp_price=51000)
         result = loop.run_until_complete(executor.open_position(req))
         assert result.success
 
