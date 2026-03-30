@@ -155,6 +155,11 @@ class Orchestrator:
             symbols=symbols,
         )
         await self.bot.setup()
+        
+                # Отправляем уведомление о старте
+        if self.bot:
+            startup_msg = "🚀 Дина запущена (dry‑run режим)" if self.executor.cfg.dry_run else "🚀 Дина запущена"
+            await self.bot.alert_error(startup_msg)
 
         # DataFeed — поставка данных
         self.data_feed = DataFeed(symbols, timeframes, signal_builder_long)
@@ -342,6 +347,9 @@ class Orchestrator:
 
         if self.strategist_short:
             await self.strategist_short.stop()
+            
+        if self.bot:                       
+            await self.bot.stop()    
 
         for task in self._tasks:
             if not task.done():
