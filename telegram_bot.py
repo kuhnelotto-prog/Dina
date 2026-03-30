@@ -82,6 +82,10 @@ class DinaBot:
         # Буфер для ночных сообщений
         self._night_buffer: List[dict] = []
         self._night_mode = False
+        
+                # Если есть allowed_ids, берём первый как владельца для уведомлений
+        if self.cfg.allowed_ids:
+            self._owner_chat_id = next(iter(self.cfg.allowed_ids))
 
     # ============================================================
     # Инициализация
@@ -513,3 +517,10 @@ class DinaBot:
         for ch in specials:
             text = text.replace(ch, f"\\{ch}")
         return text
+        
+    async def stop(self):
+        """Останавливает Telegram бота."""
+        if self._app:
+            await self._app.stop()
+            await self._app.shutdown()
+        logger.info("DinaBot stopped")     
