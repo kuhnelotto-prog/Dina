@@ -346,10 +346,7 @@ class Orchestrator:
             await self.strategist_long.stop()
 
         if self.strategist_short:
-            await self.strategist_short.stop()
-            
-        if self.bot:                       
-            await self.bot.stop()    
+            await self.strategist_short.stop()    
 
         for task in self._tasks:
             if not task.done():
