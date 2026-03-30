@@ -312,6 +312,25 @@ class Orchestrator:
     # Остановка
     # ──────────────────────────────────────────────
 
+
+    async def _run_telegram_in_thread(self) -> None:
+        """Telegram бот запускается в отдельном потоке со своим event loop."""
+        import threading
+        done = asyncio.Event()
+
+        def run_bot():
+            try:
+                if hasattr(self.bot, "run"):
+                    self.bot.run()
+            except Exception as exc:
+                logger.error("DinaBot thread error: %s", exc)
+            finally:
+                asyncio.get_event_loop().call_soon_threadsafe(done.set)
+
+        t = threading.Thread(target=run_bot, daemon=True, name="telegram-bot")
+        t.start()
+        await done.wait()
+
     async def _stop_all(self) -> None:
         logger.info("Оркестратор: остановка всех задач...")
 
