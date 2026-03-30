@@ -118,10 +118,18 @@ class DinaBot:
         logger.info("DinaBot: handlers registered")
 
     async def run(self):
-        if not self._app:
-            await self.setup()
+        # Всегда создаём новый экземпляр приложения
+        self._app = None
+        await self.setup()
         logger.info("DinaBot: starting polling...")
-        await self._app.run_polling(drop_pending_updates=True)
+        try:
+            await self._app.run_polling(drop_pending_updates=True)
+        except asyncio.CancelledError:
+            logger.info("DinaBot: polling cancelled")
+        except Exception as e:
+            logger.error(f"DinaBot: polling error: {e}", exc_info=True)
+        finally:
+            logger.info("DinaBot stopped")
 
     # ============================================================
     # Middleware
@@ -516,11 +524,4 @@ class DinaBot:
         specials = r"*[]()~`>#+-=|{}.!"
         for ch in specials:
             text = text.replace(ch, f"\\{ch}")
-        return text
-        
-    async def stop(self):
-        """Останавливает Telegram бота."""
-        if self._app:
-            await self._app.stop()
-            await self._app.shutdown()
-        logger.info("DinaBot stopped")     
+        return text    
