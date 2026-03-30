@@ -91,6 +91,7 @@ class OrderRequest:
     entry_price: float
     sl_price: float
     tp_price: float
+    symbol: str = ""
     order_type: OrderType = OrderType.MARKET
     limit_price: float = 0.0
     client_oid: str = field(default_factory=lambda: f"dina_{uuid.uuid4().hex[:12]}")
@@ -109,11 +110,12 @@ class OrderResult:
     error: str = ""
     dry_run: bool = False
     timestamp: float = field(default_factory=time.time)
+    trade_id: str = ""
 
     def __str__(self):
         if not self.success:
             return f"❌ Order FAILED: {self.error}"
-        tag = "[DRY RUN] " if self.dry_run else ""
+        tag = "[DRY RUN] " if self.cfg.dry_run else ""
         return f"✅ {tag}Order filled | price={self.filled_price:.2f} size={self.filled_size:.6f} SL={self.sl_order_id[:8]}... TP={self.tp_order_id[:8]}..."
 
 
@@ -126,6 +128,7 @@ class PositionInfo:
     unrealized_pnl: float = 0.0
     leverage: int = 1
     margin: float = 0.0
+    trade_id: str = ""
 
     @property
     def is_open(self) -> bool:
@@ -147,6 +150,7 @@ class BitgetExecutor:
         self._strategist = None
 
         logger.info(f"BitgetExecutor init | symbol={self.cfg.symbol} leverage={self.cfg.leverage}x dry_run={self.cfg.dry_run}")
+        
     def set_strategist(self, strategist):
         self._strategist = strategist   
 
@@ -245,6 +249,7 @@ class BitgetExecutor:
                 sl_order_id=f"dry_sl_{uuid.uuid4().hex[:8]}",
                 tp_order_id=f"dry_tp_{uuid.uuid4().hex[:8]}",
                 dry_run=True,
+                trade_id=req.client_oid,
             )
             await self._log_order(req, result, "open")
             # Сохраняем в памяти позицию
@@ -253,6 +258,7 @@ class BitgetExecutor:
                 side=PositionSide.LONG if req.direction == "long" else PositionSide.SHORT,
                 size=quantity,
                 avg_price=req.entry_price,
+                trade_id=req.client_oid,
             )
             self._position_ages[req.symbol] = 0
             return result
@@ -290,6 +296,7 @@ class BitgetExecutor:
             side=PositionSide.LONG if req.direction == "long" else PositionSide.SHORT,
             size=quantity,
             avg_price=result.filled_price,
+            trade_id=req.client_oid,
         )
         self._position_ages[req.symbol] = 0
 
@@ -300,11 +307,11 @@ class BitgetExecutor:
         return result
 
     async def close_position(self, symbol: str, reason: str = "signal") -> OrderResult:
-        """Закрывает текущую позицию."""
         pos = self._positions.get(symbol)
         if not pos or not pos.is_open:
             return OrderResult(success=False, error="No open position")
 
+        # ---------- DRY RUN ----------
         if self.cfg.dry_run:
             result = OrderResult(
                 success=True,
@@ -313,12 +320,28 @@ class BitgetExecutor:
                 filled_size=pos.size,
                 dry_run=True,
             )
+            # Вызов стратегиста
+            if self._strategist:
+                if pos.side == PositionSide.LONG:
+                    pnl_pct = (result.filled_price - pos.avg_price) / pos.avg_price * 100
+                else:
+                    pnl_pct = (pos.avg_price - result.filled_price) / pos.avg_price * 100
+                pnl_usd = pos.size * result.filled_price * pnl_pct / 100
+                await self._strategist.on_trade_closed(
+                    trade_id=pos.trade_id,
+                    symbol=symbol,
+                    exit_price=result.filled_price,
+                    pnl_usd=pnl_usd,
+                    pnl_pct=pnl_pct,
+                    reason=reason,
+                )
             await self._log_order_close(result, reason)
             del self._positions[symbol]
             del self._position_ages[symbol]
             await self._clear_trailing_state(symbol)
             return result
 
+        # ---------- РЕАЛЬНЫЙ РЕЖИМ ----------
         try:
             # Отменяем план-ордера SL/TP
             await self._cancel_plan_orders(symbol)
@@ -338,6 +361,22 @@ class BitgetExecutor:
                 filled_size=pos.size,
                 filled_price=float(resp.get("price", pos.avg_price) or 0),
             )
+
+            # Вызов стратегиста
+            if self._strategist:
+                if pos.side == PositionSide.LONG:
+                    pnl_pct = (result.filled_price - pos.avg_price) / pos.avg_price * 100
+                else:
+                    pnl_pct = (pos.avg_price - result.filled_price) / pos.avg_price * 100
+                pnl_usd = pos.size * result.filled_price * pnl_pct / 100
+                await self._strategist.on_trade_closed(
+                    trade_id=pos.trade_id,
+                    symbol=symbol,
+                    exit_price=result.filled_price,
+                    pnl_usd=pnl_usd,
+                    pnl_pct=pnl_pct,
+                    reason=reason,
+                )
         except Exception as e:
             logger.error(f"BitgetExecutor: ошибка закрытия: {e}", exc_info=True)
             return OrderResult(success=False, error=str(e))
@@ -859,6 +898,24 @@ class BitgetExecutor:
     # ============================================================
     # Полноценный мониторинг позиций (трейлинг, stage, таймаут)
     # ============================================================
+
+
+    async def get_open_positions(self):
+        """Возвращает список открытых позиций."""
+        try:
+            for method in ("fetch_positions", "get_positions", "positions"):
+                fn = getattr(self, method, None)
+                if fn and method != "get_open_positions":
+                    result = await fn()
+                    return result or []
+            if self.cfg.dry_run:
+                return []
+            return []
+        except Exception as exc:
+            import logging
+            logging.getLogger("BitgetExecutor").error(
+                "get_open_positions error: %s", exc)
+            return []
 
     async def _monitor_loop(self):
         """Запускается в отдельной задаче для управления позициями."""
