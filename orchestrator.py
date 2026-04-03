@@ -124,6 +124,7 @@ class Orchestrator:
             leverage=int(os.getenv("LEVERAGE", 3)),
         ))
         await self.executor.setup()
+        await self._load_state_from_exchange()
 
         # LearningEngine
         learning_engine = LearningEngine()
@@ -148,6 +149,7 @@ class Orchestrator:
         # DinaBot (Telegram)
         self.bot = DinaBot(
             config=TelegramConfig(),
+            main_loop=asyncio.get_running_loop(),
             risk_manager=risk_manager,
             portfolio=portfolio,
             executor=self.executor,
@@ -156,7 +158,7 @@ class Orchestrator:
         )
         await self.bot.setup()
         
-                # Отправляем уведомление о старте
+        # Отправляем уведомление о старте
         if self.bot:
             startup_msg = "🚀 Дина запущена (dry‑run режим)" if self.executor.cfg.dry_run else "🚀 Дина запущена"
             await self.bot.alert_error(startup_msg)
@@ -219,6 +221,10 @@ class Orchestrator:
         logger.info("  Дина-Шорт порог: %.2f / %.2f",
                     self.strategist_short.tiered_confidence_full,
                     self.strategist_short.tiered_confidence_half)
+    async def _load_state_from_exchange(self) -> None:
+        """Восстанавливает позиции и трейлинговые состояния после рестарта."""
+        if self.executor:
+            await self.executor._reconcile()
 
     # ──────────────────────────────────────────────
     # Запуск задач
@@ -245,10 +251,10 @@ class Orchestrator:
         ]
 
         # DataFeed если есть метод run
-        if hasattr(self.data_feed, "run"):
+        if hasattr(self.data_feed, "start"):
             self._tasks.append(
                 asyncio.create_task(
-                    self._run_with_restart(self.data_feed.run, "DataFeed"),
+                    self._run_with_restart(self.data_feed.start, "DataFeed"),
                     name="data-feed")
             )
 
@@ -346,7 +352,12 @@ class Orchestrator:
             await self.strategist_long.stop()
 
         if self.strategist_short:
-            await self.strategist_short.stop()    
+            await self.strategist_short.stop()
+        if self.bot:
+            self.bot.stop()
+
+        if self.data_feed:
+            await self.data_feed.stop()            
 
         for task in self._tasks:
             if not task.done():

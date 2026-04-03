@@ -115,7 +115,7 @@ class OrderResult:
     def __str__(self):
         if not self.success:
             return f"❌ Order FAILED: {self.error}"
-        tag = "[DRY RUN] " if self.cfg.dry_run else ""
+        tag = "[DRY RUN] " if self.dry_run else ""
         return f"✅ {tag}Order filled | price={self.filled_price:.2f} size={self.filled_size:.6f} SL={self.sl_order_id[:8]}... TP={self.tp_order_id[:8]}..."
 
 
@@ -277,6 +277,7 @@ class BitgetExecutor:
         filled_price = await self._wait_fill(result.order_id)
         if filled_price:
             result.filled_price = filled_price
+            result.trade_id = req.client_oid
 
         # Выставляем SL и TP
         try:
@@ -429,38 +430,6 @@ class BitgetExecutor:
     # Внутренние методы API
     # ============================================================
 
-    async def _set_leverage(self):
-        # Реализация как в предыдущих версиях
-        pass
-
-    async def _place_entry_order(self, req: OrderRequest, quantity: float) -> OrderResult:
-        # Реализация
-        pass
-
-    async def _place_market_order(self, symbol: str, side: OrderSide, quantity: float, reduce_only: bool = False, client_oid: str = "") -> dict:
-        # Реализация
-        pass
-
-    async def _place_sl(self, req: OrderRequest, quantity: float) -> str:
-        # Реализация
-        pass
-
-    async def _place_tp(self, req: OrderRequest, quantity: float) -> str:
-        # Реализация
-        pass
-
-    async def _cancel_plan_orders(self, symbol: str):
-        # Реализация
-        pass
-
-    async def _wait_fill(self, order_id: str, timeout: float = 5.0) -> Optional[float]:
-        # Реализация
-        pass
-
-    async def _retry(self, func, *args, **kwargs):
-        # Реализация
-        pass
-
     def _calc_quantity(self, size_usd: float, price: float) -> float:
         notional = size_usd * self.cfg.leverage
         qty = notional / price
@@ -469,34 +438,6 @@ class BitgetExecutor:
     # ============================================================
     # Trailing, stage, reconciliation
     # ============================================================
-
-    async def _monitor_loop(self):
-        """Запускается в отдельной задаче для управления позициями."""
-        while True:
-            await asyncio.sleep(10)  # каждые 10 секунд
-            for symbol, pos in list(self._positions.items()):
-                if not pos.is_open:
-                    continue
-
-                # Получаем текущую цену
-                price = await self._get_last_price(symbol)
-                if not price:
-                    continue
-
-                # Возраст позиции
-                age = self._position_ages.get(symbol, 0) + 1
-                self._position_ages[symbol] = age
-
-                # Position age timeout
-                if age > self.cfg.max_hold_checks and pos.unrealized_pnl / (pos.size * pos.avg_price) * 100 < self.cfg.min_expected_pnl_pct:
-                    logger.info(f"Position {symbol} timeout (age={age}), closing")
-                    await self.close_position(symbol, reason="timeout")
-                    continue
-
-                # Трейлинг (4-этапный)
-                # Здесь нужно получить ATR, stage и т.д. – для краткости оставляем заглушку
-                # В полной версии будет логика из предыдущих обсуждений
-                pass
 
     async def _reconcile(self):
         """Восстанавливает позиции и трейлинговое состояние после рестарта."""
@@ -755,6 +696,124 @@ class BitgetExecutor:
         order_id = resp.get("data", {}).get("orderId", "")
         logger.info(f"SL placed @ {req.sl_price} | id={order_id}")
         return order_id
+    async def _place_sl_raw(self, symbol: str, side: str, quantity: float, sl_price: float) -> str:
+        """Внутренний метод для выставления SL по параметрам (без OrderRequest)."""
+        from bitget.mix.order_api import OrderApi
+        api = OrderApi(self._client)
+        trigger_side = OrderSide.SELL if side == "long" else OrderSide.BUY
+        if self.cfg.dry_run:
+            logger.info("[DRY-RUN] _place_sl_raw: SL не выставлен")
+            return "dry-run-sl"
+
+        resp = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: api.placePlanOrder(
+                symbol=symbol,
+                productType=self.cfg.product_type,
+                marginMode=self.cfg.margin_mode,
+                marginCoin=self.cfg.margin_coin,
+                size=str(quantity),
+                triggerPrice=str(sl_price),
+                side=trigger_side.value,
+                tradeSide="close",
+                triggerType="mark_price",
+                orderType="market",
+                planType="loss_plan",
+                clientOid=f"dina_sl_{uuid.uuid4().hex[:8]}",
+            )
+        )
+        order_id = resp.get("data", {}).get("orderId", "")
+        logger.info(f"SL placed raw @ {sl_price} | id={order_id}")
+        return order_id
+    async def place_stop_loss(
+        self,
+        symbol: str,
+        side: str,
+        sl_price: float,
+    ) -> str:
+        """
+        Выставляет стоп-лосс план-ордер на существующую позицию.
+        Вызывается SafetyGuard, когда позиция открыта, но SL отсутствует.
+
+        Возвращает order_id созданного ордера или "" если ничего не сделано.
+        """
+        # 1. Получаем позицию из локального кэша
+        pos = self._positions.get(symbol)
+        if pos is None or not pos.is_open or pos.size <= 0:
+            # Попытка через биржу (на случай рестарта)
+            try:
+                pos = await self.get_position(symbol)
+            except Exception as exc:
+                logger.error("place_stop_loss: не удалось получить позицию %s: %s", symbol, exc)
+                return ""
+            if pos is None or not pos.is_open or pos.size <= 0:
+                logger.debug("place_stop_loss: нет открытой позиции по %s", symbol)
+                return ""
+
+        quantity = pos.size
+
+        # 2. Проверяем — нет ли уже активного SL на бирже
+        if not self.cfg.dry_run:
+            try:
+                existing_sl = await self._get_active_sl(symbol)
+                if existing_sl:
+                    logger.info(
+                        "place_stop_loss: SL уже существует для %s (order_id=%s), пропуск",
+                        symbol, existing_sl,
+                    )
+                    return existing_sl
+            except Exception as exc:
+                # Не блокируем — если не смогли проверить, ставим новый SL
+                logger.warning("place_stop_loss: не удалось проверить существующий SL: %s", exc)
+
+        # 3. Dry-run — только логируем
+        if self.cfg.dry_run:
+            logger.info(
+                "[DRY-RUN] place_stop_loss: %s side=%s qty=%.4f sl_price=%.4f",
+                symbol, side, quantity, sl_price,
+            )
+            return "dry-run-sl"
+
+        # 4. Ставим реальный SL
+        logger.warning(
+            "place_stop_loss: АВАРИЙНЫЙ SL для %s side=%s qty=%.4f цена=%.4f",
+            symbol, side, quantity, sl_price,
+        )
+        try:
+            order_id = await self._place_sl_raw(symbol, side, quantity, sl_price)
+            logger.info("place_stop_loss: SL выставлен order_id=%s", order_id)
+            return order_id or ""
+        except Exception as exc:
+            logger.error("place_stop_loss: ОШИБКА при выставлении SL %s: %s", symbol, exc)
+            return ""
+    async def _get_active_sl(self, symbol: str) -> str:
+        """
+        Проверяет наличие активного план-ордера типа pos_loss (SL) для символа.
+        Возвращает order_id если найден, иначе пустую строку.
+        """
+        if self.cfg.dry_run:
+            return ""
+
+        try:
+            from bitget.mix.order_api import OrderApi
+            api = OrderApi(self._client)
+
+            # Получаем список ожидающих план-ордеров
+            resp = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: api.ordersPlanPending(
+                    symbol=symbol,
+                    productType=self.cfg.product_type,
+                    planType="pos_loss",  # стоп-лосс
+                )
+            )
+            data = resp.get("data", {})
+            orders = data.get("entrustedList", [])
+            if orders:
+                return orders[0].get("orderId", "")
+        except Exception as exc:
+            logger.warning("_get_active_sl: ошибка запроса: %s", exc)
+        return ""            
 
     async def _place_tp(self, req: OrderRequest, quantity: float) -> str:
         from bitget.mix.order_api import OrderApi
