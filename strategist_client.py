@@ -216,7 +216,7 @@ class StrategistClient:
         """Вызывается из executor после закрытия позиции."""
         await self.attribution.record_close(trade_id, exit_price, pnl_pct, pnl_usd)
         self.portfolio.update(pnl_usd)
-        self.risk_manager.on_trade_closed(pnl_usd)
+        self.risk_manager.on_trade_closed(pnl_usd, symbol)
         if self.bot:
             await self.bot.alert_closed(
                 symbol=symbol,

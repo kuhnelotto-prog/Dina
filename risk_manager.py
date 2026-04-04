@@ -162,9 +162,11 @@ class RiskManager:
         }
         self._open_count += 1
 
-    def on_trade_closed(self, pnl_usd: float):
+    def on_trade_closed(self, pnl_usd: float, symbol: Optional[str] = None):
         self._daily_pnl += pnl_usd
         self._open_count = max(0, self._open_count - 1)
+        if symbol is not None:
+            self._open_positions.pop(symbol, None)
 
     # ============================================================
     # Внутренние методы

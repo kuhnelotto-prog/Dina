@@ -152,7 +152,16 @@ class PositionSizer:
 
         # 5. Итоговый риск
         raw_risk = base_risk * vol_mult * conf_mult * dd_mult * streak_mult
-        risk_pct = max(cfg.min_risk_pct, min(raw_risk, cfg.max_risk_pct))
+        # Жёсткое ограничение сверху (с epsilon для float)
+        epsilon = 1e-6
+        if raw_risk > cfg.max_risk_pct + epsilon:
+            logger.warning(
+                f"PositionSizer: raw_risk {raw_risk:.2f}% превышает max_risk_pct {cfg.max_risk_pct}%, "
+                f"обрезаем. Множители: base={base_risk:.2f} vol={vol_mult:.2f} conf={conf_mult:.2f} "
+                f"dd={dd_mult:.2f} streak={streak_mult:.2f}"
+            )
+            raw_risk = cfg.max_risk_pct
+        risk_pct = max(cfg.min_risk_pct, raw_risk)
 
         # 6. Расчёт позиции через SL distance
         sl_dist_pct = abs(entry_price - sl_price) / entry_price * 100

@@ -166,7 +166,7 @@ def test_risk_manager():
         R.ok("Лимит позиций → BLOCKED")
 
         # Закрытие
-        rm.on_trade_closed("BTCUSDT", 50)
+        rm.on_trade_closed(50, "BTCUSDT")
         status3 = asyncio.get_event_loop().run_until_complete(
             rm.check(portfolio, symbol="ETHUSDT", entry_price=3000, sl_price=2950, confidence=0.8)
         )
