@@ -143,6 +143,7 @@ class StrategistClient:
 
         trade_id = str(uuid.uuid4())[:8]
         req = OrderRequest(
+            symbol=symbol,
             direction=side,
             size_usd=size_usd,
             entry_price=price,
@@ -155,6 +156,7 @@ class StrategistClient:
 
         if self.bot:
             await self.bot.alert_signal(
+                symbol=symbol,
                 direction=side,
                 entry_price=price,
                 sl_price=sl_price,

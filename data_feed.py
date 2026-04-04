@@ -1,27 +1,25 @@
 """
 data_feed.py
 
-WebSocket-подписка на свечи Bitget.
-Автоматически реконнектится при обрыве.
-Обновляет кэш в SignalBuilder.
+WebSocket-подписка на свечи Bitget USDT-FUTURES.
+Автоматический реконнект с экспоненциальным backoff.
+Обновляет кэш свечей в SignalBuilder.
 """
 
 import asyncio
 import json
 import logging
-from typing import List, Dict, Optional
 import pandas as pd
 import websockets
 from websockets.exceptions import ConnectionClosed
+from typing import List, Dict
 
 from signal_builder import SignalBuilder
 
 logger = logging.getLogger(__name__)
 
-# Bitget WS URL для фьючерсов
 WS_URL = "wss://ws.bitget.com/v2/ws/public"
 
-# Маппинг таймфреймов Dina → Bitget
 TF_MAP = {
     "15m": "15m",
     "1h":  "1H",
@@ -29,9 +27,7 @@ TF_MAP = {
     "1d":  "1D",
 }
 
-# Сколько свечей держим в памяти
 CANDLE_LIMIT = 200
-
 
 class DataFeed:
     def __init__(
@@ -47,7 +43,6 @@ class DataFeed:
         self._candle_buf: Dict[tuple, list] = {}
 
     async def start(self):
-        """Запускает подписки на все символы × таймфреймы."""
         self._running = True
         tasks = [
             asyncio.create_task(self._connect_loop(symbol, tf))
@@ -60,7 +55,6 @@ class DataFeed:
         self._running = False
 
     async def _connect_loop(self, symbol: str, tf: str):
-        """Держит WS-соединение живым. При обрыве реконнектится."""
         backoff = 5
         while self._running:
             try:
@@ -68,12 +62,12 @@ class DataFeed:
                 backoff = 5
             except (ConnectionClosed, OSError) as exc:
                 logger.warning(
-                    "DataFeed: %s %s — обрыв соединения: %s. Реконнект через %ds",
+                    "DataFeed: %s %s обрыв: %s. Реконнект через %ds",
                     symbol, tf, exc, backoff,
                 )
             except Exception as exc:
                 logger.error(
-                    "DataFeed: %s %s — неожиданная ошибка: %s. Реконнект через %ds",
+                    "DataFeed: %s %s ошибка: %s. Реконнект через %ds",
                     symbol, tf, exc, backoff,
                 )
             if self._running:
@@ -81,16 +75,13 @@ class DataFeed:
                 backoff = min(backoff * 2, 60)
 
     async def _subscribe(self, symbol: str, tf: str):
-        """Одна WS-сессия для пары (symbol, tf)."""
         bitget_tf = TF_MAP.get(tf, tf)
-        inst_id = symbol  # например "BTCUSDT"
-
         subscribe_msg = json.dumps({
             "op": "subscribe",
             "args": [{
                 "instType": "USDT-FUTURES",
                 "channel": f"candle{bitget_tf}",
-                "instId": inst_id,
+                "instId": symbol,
             }]
         })
 
@@ -115,7 +106,6 @@ class DataFeed:
                 await self._handle_message(raw, symbol, tf)
 
     async def _handle_message(self, raw: str, symbol: str, tf: str):
-        """Разбирает WS-сообщение и обновляет кэш свечей."""
         try:
             msg = json.loads(raw)
         except json.JSONDecodeError:
@@ -147,7 +137,6 @@ class DataFeed:
                 if len(buf) > CANDLE_LIMIT:
                     buf.pop(0)
 
-        # Конвертируем буфер в DataFrame и обновляем SignalBuilder
         if len(buf) >= 30:
             df = pd.DataFrame(
                 buf,
@@ -156,3 +145,7 @@ class DataFeed:
             df["ts"] = pd.to_datetime(df["ts"], unit="s")
             df = df.set_index("ts")
             await self.signal_builder.update_candle(symbol, tf, df)
+            logger.debug(
+                "DataFeed: обновлён кэш %s %s (%d свечей)",
+                symbol, tf, len(buf),
+            )

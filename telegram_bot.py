@@ -121,14 +121,20 @@ class DinaBot:
         logger.info("DinaBot: handlers registered")
 
     async def run(self):
-        self._tg_loop = asyncio.get_running_loop()
         self._stop_event = asyncio.Event()
         await self.setup()
         logger.info("DinaBot: starting polling...")
-        polling_task = asyncio.create_task(self._app.run_polling(drop_pending_updates=True))
-        await asyncio.wait([polling_task, self._stop_event.wait()], return_when=asyncio.FIRST_COMPLETED)
-        polling_task.cancel()
-        await self._app.shutdown()
+        
+        # Запускаем polling напрямую - он сам управляет своим event loop
+        try:
+            await self._app.run_polling(drop_pending_updates=True)
+        except asyncio.CancelledError:
+            logger.info("DinaBot: polling cancelled")
+        except Exception as e:
+            logger.error(f"DinaBot: polling error: {e}")
+        finally:
+            # Не пытаемся управлять event loop - run_polling сам всё закроет
+            pass
 
     # ============================================================
     # Вспомогательный метод для отправки сообщений с экранированием
@@ -355,11 +361,11 @@ class DinaBot:
     # Алерты
     # ============================================================
 
-    async def alert_signal(self, direction: str, entry_price: float, sl_price: float, tp_price: float, confidence: float, reason: str = ""):
+    async def alert_signal(self, symbol: str, direction: str, entry_price: float, sl_price: float, tp_price: float, confidence: float, reason: str = ""):
         side_emoji = "🟢 LONG" if direction == "long" else "🔴 SHORT"
         rr = abs(tp_price - entry_price) / abs(entry_price - sl_price) if entry_price != sl_price else 0
         text = (
-            f"📡 Сигнал — {side_emoji}\n\n"
+            f"📡 Сигнал — {side_emoji} | {symbol}\n\n"
             f"Вход:  {entry_price:.2f}\n"
             f"SL:    {sl_price:.2f} ({abs(entry_price-sl_price)/entry_price*100:.2f}%)\n"
             f"TP:    {tp_price:.2f} ({abs(tp_price-entry_price)/entry_price*100:.2f}%)\n"
@@ -370,11 +376,11 @@ class DinaBot:
             text += f"\n_{reason}"
         await self._send(text, priority="normal")
 
-    async def alert_opened(self, direction: str, filled_price: float, size_usd: float, sl_price: float, tp_price: float, dry_run: bool = False):
+    async def alert_opened(self, symbol: str, direction: str, filled_price: float, size_usd: float, sl_price: float, tp_price: float, dry_run: bool = False):
         tag = " [DRY RUN]" if dry_run else ""
         side = "🟢 LONG" if direction == "long" else "🔴 SHORT"
         text = (
-            f"✅ Позиция открыта{tag} — {side}\n\n"
+            f"✅ Позиция открыта{tag} — {side} | {symbol}\n\n"
             f"Цена входа: {filled_price:.2f}\n"
             f"Размер:     ${size_usd:,.0f}\n"
             f"SL:         {sl_price:.2f}\n"
@@ -382,14 +388,14 @@ class DinaBot:
         )
         await self._send(text, priority="high")
 
-    async def alert_closed(self, direction: str, entry_price: float, exit_price: float, pnl_usd: float, pnl_pct: float, reason: str, dry_run: bool = False):
+    async def alert_closed(self, symbol: str, direction: str, entry_price: float, exit_price: float, pnl_usd: float, pnl_pct: float, reason: str, dry_run: bool = False):
         tag = " [DRY RUN]" if dry_run else ""
         sign = "+" if pnl_usd >= 0 else ""
         emoji = "🎉" if pnl_usd >= 0 else "😔"
         reason_map = {"sl": "SL", "tp": "TP ✨", "signal": "сигнал", "manual": "вручную", "timeout": "таймаут"}
         r_str = reason_map.get(reason, reason)
         text = (
-            f"{emoji} Позиция закрыта{tag}\n\n"
+            f"{emoji} Позиция закрыта{tag} | {symbol}\n\n"
             f"Выход:  {r_str}\n"
             f"Вход:   {entry_price:.2f} → {exit_price:.2f}\n"
             f"P&L:   {sign}{pnl_usd:.2f}$ ({sign}{pnl_pct:.2f}%)"
