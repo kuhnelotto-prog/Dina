@@ -17,6 +17,7 @@ import logging
 import os
 import signal
 import time
+from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -32,6 +33,7 @@ from signal_builder import SignalBuilder
 from strategist_client import StrategistClient
 from safety_guard import create_safety_guard, SafetyGuardConfig
 from data_feed import DataFeed
+import event_logger
 
 logger = logging.getLogger("Orchestrator")
 
@@ -410,6 +412,13 @@ class Orchestrator:
                     self._event_log.append(event)
                     logger.info(f"✅ Новая позиция: {pos['side']} {symbol} {pos['size']} @ {pos['entry_price']}")
                     await self.bot._send(f"✅ Открыта позиция\n{pos['side']} {symbol}\nРазмер: {pos['size']}\nВход: {pos['entry_price']:.2f}", priority="info")
+                    # Логируем событие
+                    event_logger.position_opened(
+                        symbol=symbol,
+                        side=pos["side"],
+                        size=pos["size"],
+                        entry=pos["entry_price"]
+                    )
 
                 # ❌ Позиция закрылась
                 for symbol in last_symbols - current_symbols:
@@ -423,6 +432,11 @@ class Orchestrator:
                     self._event_log.append(event)
                     logger.info(f"❌ Позиция закрыта: {pos['side']} {symbol}")
                     await self.bot._send(f"❌ Позиция закрыта\n{pos['side']} {symbol}", priority="info")
+                    # Логируем событие
+                    event_logger.position_closed(
+                        symbol=symbol,
+                        side=pos["side"]
+                    )
 
                 # Обновляем состояние
                 self._last_known_positions = {p["symbol"]: p for p in positions}
