@@ -132,6 +132,9 @@ class DinaBot:
             logger.info("DinaBot: polling cancelled")
         except Exception as e:
             logger.error(f"DinaBot: polling error: {e}")
+            # Явно закрываем приложение при ошибке
+            await self._app.shutdown()
+            await self._app._bootstrap_initialize()
         finally:
             # Не пытаемся управлять event loop - run_polling сам всё закроет
             pass
