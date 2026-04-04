@@ -161,7 +161,7 @@ class Orchestrator:
         # Отправляем уведомление о старте
         if self.bot:
             startup_msg = "🚀 Дина запущена (dry‑run режим)" if self.executor.cfg.dry_run else "🚀 Дина запущена"
-            await self.bot.alert_error(startup_msg)
+            await self.bot._send(startup_msg, priority="info")
 
         # DataFeed — поставка данных
         self.data_feed = DataFeed(symbols, timeframes, signal_builder_long)
@@ -258,11 +258,11 @@ class Orchestrator:
                     name="data-feed")
             )
 
-        # Telegram bot polling если есть
+        # Telegram bot если есть
         if hasattr(self.bot, "run"):
             self._tasks.append(
                 asyncio.create_task(
-                    self._run_with_restart(self.bot.run, "DinaBot"),
+                    self._run_with_restart(self._run_telegram, "DinaBot"),
                     name="telegram-bot")
             )
 
@@ -324,23 +324,16 @@ class Orchestrator:
     # ──────────────────────────────────────────────
 
 
-    async def _run_telegram_in_thread(self) -> None:
-        """Telegram бот запускается в отдельном потоке со своим event loop."""
-        import threading
-        done = asyncio.Event()
-
-        def run_bot():
-            try:
-                if hasattr(self.bot, "run"):
-                    self.bot.run()
-            except Exception as exc:
-                logger.error("DinaBot thread error: %s", exc)
-            finally:
-                asyncio.get_event_loop().call_soon_threadsafe(done.set)
-
-        t = threading.Thread(target=run_bot, daemon=True, name="telegram-bot")
-        t.start()
-        await done.wait()
+    async def _run_telegram(self) -> None:
+        """Запуск Telegram бота."""
+        try:
+            if hasattr(self.bot, "run"):
+                # Просто запускаем бота, run_polling() сам управляет своим event loop
+                await self.bot.run()
+        except Exception as exc:
+            logger.error("DinaBot error: %s", exc)
+            # Не поднимаем исключение дальше, чтобы не вызывать перезапуски
+            # Telegram бот либо работает, либо нет, но не должен ломать всю систему
 
     async def _stop_all(self) -> None:
         logger.info("Оркестратор: остановка всех задач...")
