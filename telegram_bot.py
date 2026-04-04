@@ -132,12 +132,15 @@ class DinaBot:
             logger.info("DinaBot: polling cancelled")
         except Exception as e:
             logger.error(f"DinaBot: polling error: {e}")
-            # Явно закрываем приложение при ошибке
-            await self._app.shutdown()
-            await self._app._bootstrap_initialize()
+            # Просто логируем ошибку, не пытаемся управлять event loop
+            # run_polling сам обрабатывает закрытие приложения
         finally:
             # Не пытаемся управлять event loop - run_polling сам всё закроет
             pass
+
+    def run_sync(self):
+        """Синхронная версия run() для запуска в отдельном потоке."""
+        asyncio.run(self.run())
 
     # ============================================================
     # Вспомогательный метод для отправки сообщений с экранированием
