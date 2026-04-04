@@ -12,7 +12,7 @@ from typing import List, Dict
 from event_bus import EventBus, BotEvent, EventType
 from signal_builder import SignalBuilder
 from learning_engine import LearningEngine
-from risk_manager import RiskManager, PortfolioState
+from risk_manager import RiskManager, PortfolioState, RiskStatus
 from bitget_executor import BitgetExecutor, OrderRequest, OrderType
 from performance_attribution import PerformanceAttribution, SignalSource
 from telegram_bot import DinaBot
@@ -125,7 +125,7 @@ class StrategistClient:
             sl_price = price * (1 + sl_pct / 100)
             tp_price = price * (1 - tp_pct / 100)
 
-        risk_status = await self.risk_manager.check(
+        risk_status: RiskStatus = await self.risk_manager.check(
             portfolio=self.portfolio,
             symbol=symbol,
             entry_price=price,
@@ -139,6 +139,9 @@ class StrategistClient:
             logger.info(f"{symbol}: RiskManager blocked - {risk_status.reason}")
             return
 
+        if risk_status.size_result is None:
+            logger.error(f"{symbol}: RiskManager allowed but size_result is None")
+            return
         size_usd = risk_status.size_result.position_usd
 
         trade_id = str(uuid.uuid4())[:8]
@@ -185,6 +188,7 @@ class StrategistClient:
 
             if self.bot:
                 await self.bot.alert_opened(
+                    symbol=symbol,
                     direction=side,
                     filled_price=result.filled_price,
                     size_usd=size_usd,
@@ -215,6 +219,7 @@ class StrategistClient:
         self.risk_manager.on_trade_closed(pnl_usd)
         if self.bot:
             await self.bot.alert_closed(
+                symbol=symbol,
                 direction="",   # направление можно получить из attribution, но для упрощения
                 entry_price=0,
                 exit_price=exit_price,

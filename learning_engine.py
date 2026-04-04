@@ -71,13 +71,13 @@ class LearningStats:
 
 class LearningEngine:
     def __init__(self,
-                 db_path: str = None,
+                 db_path: Optional[str] = None,
                  min_trades_total: int = MIN_TRADES_TOTAL,
                  min_trades_per_source: int = MIN_TRADES_PER_SOURCE,
                  max_drift: float = MAX_DRIFT,
                  decay_factor: float = DECAY_FACTOR,
                  update_every_n_trades: int = 10):
-        self.db_path = db_path or os.getenv("DB_PATH", "dina.db")
+        self.db_path: str = db_path or str(os.getenv("DB_PATH", "dina.db"))
         self.min_trades_total = min_trades_total
         self.min_trades_per_source = min_trades_per_source
         self.max_drift = max_drift
@@ -117,7 +117,7 @@ class LearningEngine:
     # Публичные методы
     # ============================================================
 
-    async def record_trade(self, trade_id: str, sources: List[str], pnl_pct: float, closed_at: float = None):
+    async def record_trade(self, trade_id: str, sources: List[str], pnl_pct: float, closed_at: Optional[float] = None):
         """Записывает исход сделки. Вызывать только для source='live'."""
         if closed_at is None:
             closed_at = time.time()
@@ -223,10 +223,11 @@ class LearningEngine:
         hi = default * (1.0 + self.max_drift)
         return round(max(lo, min(weight, hi)), 4)
 
-    async def _load_trades(self) -> List[tuple]:
+    async def _load_trades(self) -> List[Tuple[str, float, float]]:
         async with aiosqlite.connect(self.db_path) as db:
             cur = await db.execute("SELECT sources, pnl_pct, closed_at FROM learning_trades")
-            return await cur.fetchall()
+            rows = await cur.fetchall()
+            return [(str(sources), float(pnl_pct), float(closed_at)) for sources, pnl_pct, closed_at in rows]
 
     async def _load_weights(self):
         async with aiosqlite.connect(self.db_path) as db:
@@ -267,8 +268,8 @@ class LearningEngine:
         Корректирует confidence на основе калибровок по RSI-бакетам.
         Возвращает (adjusted_conf, multiplier, reasons).
         """
-        multipliers = []
-        reasons = []
+        multipliers: List[float] = []
+        reasons: List[str] = []
 
         # Определяем RSI‑бакет
         if rsi < 30:

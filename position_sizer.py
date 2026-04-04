@@ -106,7 +106,7 @@ class SizeResult:
 
 
 class PositionSizer:
-    def __init__(self, config: SizerConfig = None):
+    def __init__(self, config: Optional[SizerConfig] = None):
         self.cfg = config or SizerConfig()
         logger.info(f"PositionSizer init | base={self.cfg.base_risk_pct}% max={self.cfg.max_risk_pct}%")
 

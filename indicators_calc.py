@@ -7,8 +7,10 @@ import pandas as pd
 import numpy as np
 import ta
 
+from typing import Optional
+
 class IndicatorsCalculator:
-    def __init__(self, config: dict = None):
+    def __init__(self, config: Optional[dict] = None):
         self.config = config or {}
         self._ema_fast = int(self.config.get("EMA_FAST", 9))
         self._ema_slow = int(self.config.get("EMA_SLOW", 21))

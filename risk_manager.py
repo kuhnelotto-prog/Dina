@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, List, Dict
 
-from position_sizer import PositionSizer, PortfolioState, SizerConfig, SizerDecision
+from position_sizer import PositionSizer, PortfolioState, SizerConfig, SizerDecision, SizeResult
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class RiskStatus:
     allowed: bool
     state: DrawdownState
     reason: str = ""
-    size_result: Optional[object] = None  # SizeResult из position_sizer
+    size_result: Optional[SizeResult] = None
 
     @property
     def risk_status_str(self) -> str:
@@ -48,7 +48,7 @@ class RiskStatus:
 class RiskManager:
     def __init__(
         self,
-        sizer_config: SizerConfig = None,
+        sizer_config: Optional[SizerConfig] = None,
         max_open_positions: int = 1,
         daily_loss_limit: float = 5.0,
         max_total_exposure_usd: float = 5000.0,

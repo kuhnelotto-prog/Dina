@@ -8,6 +8,7 @@ import logging
 import json
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 Path("logs").mkdir(exist_ok=True)
 
@@ -27,21 +28,23 @@ def _log(event_type: str, data: dict):
 
 # Публичные функции — вызывай их из любого модуля
 
-def signal_generated(symbol: str, side: str, entry: float,
-                     sl: float, tp: float, conf: float, tf: str):
+def signal_generated(symbol: str, direction: str, composite_score: float,
+                     rsi: Optional[float] = None, volume_ratio: Optional[float] = None):
     _log("SIGNAL", {
-        "symbol": symbol, "side": side,
-        "entry": entry, "sl": sl, "tp": tp,
-        "conf": round(conf, 2), "tf": tf,
+        "symbol": symbol,
+        "direction": direction,
+        "composite_score": round(composite_score, 3),
+        "rsi": round(rsi, 2) if rsi is not None else None,
+        "volume_ratio": round(volume_ratio, 2) if volume_ratio is not None else None,
     })
 
-def position_opened(symbol: str, side: str, size: float, entry: float):
+def position_opened(symbol: str, side: str, size: float, entry: float, sl: float):
     _log("POSITION_OPEN", {
         "symbol": symbol, "side": side,
-        "size": size, "entry": entry,
+        "size": size, "entry": entry, "sl": sl,
     })
 
-def position_closed(symbol: str, side: str, pnl: float = None):
+def position_closed(symbol: str, side: str, pnl: Optional[float] = None):
     _log("POSITION_CLOSE", {
         "symbol": symbol, "side": side,
         "pnl": pnl,
