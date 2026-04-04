@@ -45,6 +45,10 @@ class SignalBuilder:
         # Кэш последних сигналов
         self._last_signals: Dict[str, dict] = {}
 
+        # Cooldown между сигналами
+        self._signal_cooldown_sec: int = 300  # 5 минут
+        self._last_signal_time: Dict[str, float] = {}
+
     def _get_default_weights(self) -> dict:
         return {
             "ema_cross": 1.0,
@@ -67,6 +71,13 @@ class SignalBuilder:
         Вычисляет сигналы для символа.
         Возвращает словарь с индикаторами и composite_score.
         """
+        # Cooldown проверка
+        import time
+        now = time.monotonic()
+        last = self._last_signal_time.get(symbol, 0)
+        if now - last < self._signal_cooldown_sec:
+            return {"symbol": symbol, "error": "cooldown", "composite_score": 0.0}
+
         # Получаем данные для основного ТФ
         df = self._candle_cache.get((symbol, current_tf))
         if df is None or len(df) < 30:
@@ -115,6 +126,7 @@ class SignalBuilder:
             signal["weights"] = weights
 
         self._last_signals[symbol] = signal
+        self._last_signal_time[symbol] = time.monotonic()
         return signal
 
     async def _aggregate_timeframes(self, symbol: str, direction: str) -> Tuple[float, dict]:
@@ -186,8 +198,8 @@ class SignalBuilder:
         # MACD cross
         macd_cross = False
         if "macd" in indicators and "macd_signal" in indicators:
-            # Просто пересечение вверх или вниз
-            macd_cross = True  # для упрощения
+            # Временно отключаем MACD cross для избежания ложных сигналов
+            macd_cross = False
 
         # Bollinger squeeze
         bb_squeeze = (indicators["bb_upper"] - indicators["bb_lower"]) / indicators["bb_middle"] < 0.05 if indicators["bb_middle"] > 0 else False
@@ -256,7 +268,7 @@ class SignalBuilder:
             total_w += weights.get("macd_cross", 0.5)
 
         if signals["bb_squeeze"]:
-            score += weights.get("bb_squeeze", 0.3) * direction_mult
+            score += weights.get("bb_squeeze", 0.3)
             total_w += weights.get("bb_squeeze", 0.3)
 
         if signals["sweep_bull"]:
