@@ -135,7 +135,7 @@ class Orchestrator:
         logger.info(f"💰 Стартовый баланс: ${starting_balance:.2f}")
 
         # RiskManager — общий для лонга и шорта
-        risk_manager = RiskManager(
+        self.risk_manager = RiskManager(
             sizer_config=SizerConfig(
                 base_risk_pct=float(os.getenv("BASE_RISK_PCT", 1.0)),
                 max_risk_pct=float(os.getenv("MAX_RISK_PCT", 2.0)),
@@ -144,6 +144,7 @@ class Orchestrator:
             daily_loss_limit=float(os.getenv("DAILY_LOSS_LIMIT", 5.0)),
             max_total_exposure_usd=float(os.getenv("MAX_TOTAL_EXPOSURE", 5000.0)),
         )
+        risk_manager = self.risk_manager  # для совместимости с существующим кодом
 
         # LearningEngine
         learning_engine = LearningEngine()
@@ -249,6 +250,18 @@ class Orchestrator:
         """Восстанавливает позиции и трейлинговые состояния после рестарта."""
         if self.executor:
             await self.executor._reconcile()
+            # После восстановления позиций регистрируем их в risk_manager
+            positions = await self.executor.get_open_positions()
+            for pos in positions:
+                symbol = pos["symbol"]
+                side = pos["side"]
+                size_usd = pos["size"] * pos["entry_price"]
+                direction = "long" if side == "long" else "short"
+                self.risk_manager.on_trade_opened(symbol, size_usd, side, direction)
+                # Сохраняем в last_known_positions для монитора
+                self._last_known_positions[symbol] = pos
+            if positions:
+                logger.info(f"Восстановлено {len(positions)} позиций в risk_manager")
 
     # ──────────────────────────────────────────────
     # Запуск задач
@@ -566,6 +579,9 @@ class Orchestrator:
                         side=pos["side"],
                         pnl=None
                     )
+                    # Уведомляем risk_manager о закрытии позиции (pnl неизвестен, передаём 0)
+                    if self.risk_manager:
+                        self.risk_manager.on_trade_closed(0.0, symbol)
 
                 # Обновляем состояние
                 self._last_known_positions = {p["symbol"]: p for p in positions}
