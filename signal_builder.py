@@ -16,6 +16,7 @@ import numpy as np
 
 from indicators_calc import IndicatorsCalculator
 from event_bus import EventBus, BotEvent, EventType
+import event_logger
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,14 @@ class SignalBuilder:
 
         self._last_signals[symbol] = signal
         self._last_signal_time[symbol] = time.monotonic()
+        # Логируем сигнал
+        event_logger.signal_generated(
+            symbol=symbol,
+            direction=self._direction,
+            composite_score=multi_score,
+            rsi=indicators["rsi"],
+            volume_ratio=indicators["volume_ratio"]
+        )
         return signal
 
     async def _aggregate_timeframes(self, symbol: str, direction: str) -> Tuple[float, dict]:
