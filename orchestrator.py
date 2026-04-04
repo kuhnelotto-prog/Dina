@@ -59,6 +59,11 @@ class Orchestrator:
         self.strategist_short: StrategistClient | None = None
         self.data_feed: DataFeed | None = None
 
+        # Монитор позиций
+        self._monitor_running = False
+        self._last_known_positions: dict[str, dict] = {}
+        self._event_log: list[dict] = []
+
     # ──────────────────────────────────────────────
     # Точка входа
     # ──────────────────────────────────────────────
@@ -273,6 +278,9 @@ class Orchestrator:
 
         logger.info("Оркестратор: %d задач запущено ✅", len(self._tasks))
 
+        # Запускаем монитор позиций
+        asyncio.create_task(self._position_monitor_loop())
+
     # ──────────────────────────────────────────────
     # Heartbeat — сигнал жизни для SafetyGuard
     # ──────────────────────────────────────────────
@@ -343,6 +351,9 @@ class Orchestrator:
     async def _stop_all(self) -> None:
         logger.info("Оркестратор: остановка всех задач...")
 
+        # Останавливаем монитор позиций
+        self._monitor_running = False
+
         if self.safety_guard:
             self.safety_guard.stop()
 
@@ -365,6 +376,62 @@ class Orchestrator:
             await asyncio.gather(*self._tasks, return_exceptions=True)
 
         logger.info("Оркестратор: все задачи остановлены ✅")
+
+    # ──────────────────────────────────────────────
+    # Монитор позиций
+    # ──────────────────────────────────────────────
+
+    async def _position_monitor_loop(self):
+        """
+        Фоновый монитор позиций. Работает вечно в отдельном таске.
+        Ничего не изменяет, только наблюдает, логирует и оповещает об изменениях.
+        """
+        self._monitor_running = True
+        logger.info("🔍 Монитор позиций запущен")
+
+        while self._monitor_running:
+            try:
+                # Запрашиваем актуальные позиции из биржи
+                positions = await self.executor.get_open_positions()
+                current_symbols = {p["symbol"] for p in positions}
+                last_symbols = set(self._last_known_positions.keys())
+
+                # ✅ Новая позиция открылась
+                for symbol in current_symbols - last_symbols:
+                    pos = next(p for p in positions if p["symbol"] == symbol)
+                    event = {
+                        "ts": asyncio.get_event_loop().time(),
+                        "type": "position_opened",
+                        "symbol": symbol,
+                        "side": pos["side"],
+                        "size": pos["size"],
+                        "entry_price": pos["entry_price"],
+                    }
+                    self._event_log.append(event)
+                    logger.info(f"✅ Новая позиция: {pos['side']} {symbol} {pos['size']} @ {pos['entry_price']}")
+                    await self.bot._send(f"✅ Открыта позиция\n{pos['side']} {symbol}\nРазмер: {pos['size']}\nВход: {pos['entry_price']:.2f}", priority="info")
+
+                # ❌ Позиция закрылась
+                for symbol in last_symbols - current_symbols:
+                    pos = self._last_known_positions[symbol]
+                    event = {
+                        "ts": asyncio.get_event_loop().time(),
+                        "type": "position_closed",
+                        "symbol": symbol,
+                        "side": pos["side"],
+                    }
+                    self._event_log.append(event)
+                    logger.info(f"❌ Позиция закрыта: {pos['side']} {symbol}")
+                    await self.bot._send(f"❌ Позиция закрыта\n{pos['side']} {symbol}", priority="info")
+
+                # Обновляем состояние
+                self._last_known_positions = {p["symbol"]: p for p in positions}
+
+            except Exception as exc:
+                logger.warning(f"⚠ Монитор позиций: ошибка: {exc}")
+
+            finally:
+                await asyncio.sleep(10)
 
 # ──────────────────────────────────────────────────────
 # Точка входа (если запускается напрямую)
