@@ -18,7 +18,7 @@ class TradeRecord:
     pnl_pct: Optional[float] = None
     duration_min: Optional[float] = None
     exit_reason: str = ""
-    tags: List[str] = None
+    tags: Optional[List[str]] = None
     source: str = "live"          # backtest, dryrun, live
     commission: float = 0.0
     commission_asset: str = "USDT"

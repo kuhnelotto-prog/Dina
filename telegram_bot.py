@@ -60,14 +60,14 @@ class BotState(str, Enum):
 class DinaBot:
     def __init__(
         self,
-        config: TelegramConfig = None,
+        config: Optional[TelegramConfig] = None,
         strategist=None,
         risk_manager=None,
         portfolio=None,
         executor=None,
         attribution=None,
         symbols=None,
-        main_loop: asyncio.AbstractEventLoop = None,
+        main_loop: Optional[asyncio.AbstractEventLoop] = None,
     ):
         self.cfg = config or TelegramConfig()
         self.strategist = strategist
@@ -148,6 +148,8 @@ class DinaBot:
 
     async def _reply(self, update: Update, text: str, **kwargs):
         """Отправляет ответ с экранированным текстом."""
+        if update.message is None:
+            return
         escaped = self._escape(text)
         await update.message.reply_text(escaped, parse_mode=ParseMode.MARKDOWN_V2, **kwargs)
 
@@ -158,14 +160,18 @@ class DinaBot:
     def _is_allowed(self, update: Update) -> bool:
         if not self.cfg.allowed_ids:
             return True
+        if update.effective_chat is None:
+            return False
         chat_id = update.effective_chat.id
         return chat_id in self.cfg.allowed_ids
 
     async def _guard(self, update: Update) -> bool:
+        if update.message is None:
+            return False
         if not self._is_allowed(update):
             await update.message.reply_text("⛔ Доступ запрещён.")
             return False
-        if self._owner_chat_id is None:
+        if self._owner_chat_id is None and update.effective_chat is not None:
             self._owner_chat_id = update.effective_chat.id
         return True
 
@@ -196,11 +202,44 @@ class DinaBot:
     async def _cmd_status(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
             return
-        text = await self._build_status()
+        
+        # Временная команда для отладки - показывает состояние оркестратора
+        from orchestrator import Orchestrator
+        import time
+        
+        # Получаем текущий оркестратор (глобальный экземпляр)
+        # В реальной системе нужно передавать ссылку на оркестратор
+        # Для простоты создаем временный статус
+        uptime = time.monotonic() - getattr(self, '_start_time', time.monotonic())
+        
+        # Пытаемся получить информацию о свечах и позициях если доступно
+        candle_count = 0
+        pos_count = 0
+        monitor_status = "❌ неизвестно"
+        
+        # Если есть доступ к оркестратору через self.strategist или другие ссылки
+        if hasattr(self, 'strategist') and hasattr(self.strategist, '_orchestrator'):
+            orch = self.strategist._orchestrator
+            if hasattr(orch, 'data_feed') and hasattr(orch.data_feed, '_candle_buf'):
+                candle_count = sum(len(buf) for buf in orch.data_feed._candle_buf.values())
+            if hasattr(orch, '_last_known_positions'):
+                pos_count = len(orch._last_known_positions)
+            if hasattr(orch, '_monitor_running'):
+                monitor_status = "✅ запущен" if orch._monitor_running else "❌ остановлен"
+        
+        text = f"""
+✅ Дина работает
+Аптайм: {int(uptime/60)} мин
+Свечей в кэше: {candle_count}
+Открыто позиций: {pos_count}
+Монитор: {monitor_status}
+        """
         await self._reply(update, text)
 
     async def _cmd_history(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
+            return
+        if update.message is None:
             return
         trades = await self._load_trades(limit=10)
         if not trades:
@@ -226,6 +265,8 @@ class DinaBot:
     async def _cmd_pause(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
             return
+        if update.message is None:
+            return
         if self.state == BotState.PAUSED:
             await update.message.reply_text("Уже на паузе.")
             return
@@ -237,6 +278,8 @@ class DinaBot:
     async def _cmd_resume(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
             return
+        if update.message is None:
+            return
         if self.state == BotState.HALTED:
             await update.message.reply_text("🔴 Бот в HALT по риск-менеджеру. Исправь проблему и перезапусти бота.")
             return
@@ -247,6 +290,8 @@ class DinaBot:
 
     async def _cmd_close(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
+            return
+        if update.message is None:
             return
         if not self.executor or not self.executor._positions:
             await update.message.reply_text("Нет открытых позиций для закрытия.")
@@ -264,6 +309,8 @@ class DinaBot:
     async def _cmd_risk(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
             return
+        if update.message is None:
+            return
         if not self.risk_manager:
             await update.message.reply_text("RiskManager не подключён.")
             return
@@ -272,6 +319,8 @@ class DinaBot:
 
     async def _cmd_setlimit(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
+            return
+        if update.message is None:
             return
         args = ctx.args
         if not args:
@@ -293,6 +342,8 @@ class DinaBot:
     async def _cmd_attribution(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
             return
+        if update.message is None:
+            return
         if not self.attribution:
             await update.message.reply_text("Attribution не подключён.")
             return
@@ -305,7 +356,11 @@ class DinaBot:
 
     async def _on_callback(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
+        if query is None:
+            return
         await query.answer()
+        if query.data is None:
+            return
         if query.data.startswith("close_"):
             symbol = query.data.split("_")[1]
             if not self.executor:
@@ -322,6 +377,8 @@ class DinaBot:
 
     async def _on_text(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_allowed(update):
+            return
+        if update.message is None:
             return
         await update.message.reply_text("Используй команды: /status /history /pnl /pause /resume")
 

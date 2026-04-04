@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 class SignalBuilder:
-    def __init__(self, symbols: List[str], timeframes: List[str] = None,
-                 learning=None, direction: str = "LONG", bus: EventBus = None,
-                 shared_signal_time: Dict[str, float] = None):
+    def __init__(self, symbols: List[str], timeframes: Optional[List[str]] = None,
+                 learning=None, direction: str = "LONG", bus: Optional[EventBus] = None,
+                 shared_signal_time: Optional[Dict[str, float]] = None):
         self._symbols = symbols
         self._timeframes = timeframes or ["15m", "1h", "4h"]
         self._learning = learning

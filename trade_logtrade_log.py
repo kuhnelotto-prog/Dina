@@ -8,7 +8,7 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 from .models import TradeRecord, PnLSummary
 
@@ -51,6 +51,9 @@ class TradeLog:
         log.info(f"TradeLog initialized: {self.db_path}")
 
     async def record_entry(self, trade: TradeRecord):
+        if self._conn is None:
+            await self.init()
+            assert self._conn is not None
         await self._conn.execute("""
             INSERT INTO trades 
             (trade_id, symbol, side, size_usd, entry_price, entry_time, bot_id, tags, source, commission, commission_asset)
@@ -73,6 +76,9 @@ class TradeLog:
 
     async def record_exit(self, trade_id: str, exit_price: float, exit_reason: str = "manual",
                           commission: float = 0.0, commission_asset: str = "USDT"):
+        if self._conn is None:
+            await self.init()
+            assert self._conn is not None
         cursor = await self._conn.execute("SELECT * FROM trades WHERE trade_id = ?", (trade_id,))
         row = await cursor.fetchone()
         if not row:
@@ -121,8 +127,11 @@ class TradeLog:
         log.info(f"Trade closed: {trade_id} {side} {entry['symbol']} PnL: {pnl_usd:+.2f}$")
 
     async def get_recent_trades(self, limit: int = 10, bot_id: Optional[str] = None, source: Optional[str] = None) -> List[TradeRecord]:
+        if self._conn is None:
+            await self.init()
+            assert self._conn is not None
         query = "SELECT * FROM trades WHERE exit_time IS NOT NULL"
-        params = []
+        params: List[Any] = []
         if bot_id:
             query += " AND bot_id = ?"
             params.append(bot_id)
@@ -141,6 +150,9 @@ class TradeLog:
         return result
 
     async def get_pnl_for_period(self, period: str = "today", bot_id: Optional[str] = None, source: Optional[str] = None) -> PnLSummary:
+        if self._conn is None:
+            await self.init()
+            assert self._conn is not None
         now = datetime.utcnow()
         if period == "today":
             start = datetime(now.year, now.month, now.day).timestamp()
@@ -164,7 +176,7 @@ class TradeLog:
             FROM trades 
             WHERE exit_time >= ? AND exit_time IS NOT NULL
         """
-        params = [start]
+        params: List[Any] = [start]
         if bot_id:
             query += " AND bot_id = ?"
             params.append(bot_id)

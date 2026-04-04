@@ -93,9 +93,11 @@ class SourceStats:
 # PerformanceAttribution
 # ============================================================
 
+from typing import Optional
+
 class PerformanceAttribution:
-    def __init__(self, db_path: str = None):
-        self.db_path = db_path or os.getenv("DB_PATH", "dina.db")
+    def __init__(self, db_path: Optional[str] = None):
+        self.db_path: str = db_path or str(os.getenv("DB_PATH", "dina.db"))
         self._open_trades: Dict[str, AttributedTrade] = {}
 
     async def setup(self):

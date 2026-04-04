@@ -65,6 +65,7 @@ class Orchestrator:
         self._monitor_running = False
         self._last_known_positions: dict[str, dict] = {}
         self._event_log: list[dict] = []
+        self._balance_counter = 0
 
     # ──────────────────────────────────────────────
     # Точка входа
@@ -108,11 +109,30 @@ class Orchestrator:
         attribution = PerformanceAttribution()
         await attribution.setup()
 
+        # BitgetExecutor — общий
+        self.executor = BitgetExecutor(ExecutorConfig(
+            symbol=symbols[0],
+            leverage=int(os.getenv("LEVERAGE", 3)),
+        ))
+        await self.executor.setup()
+        await self._load_state_from_exchange()
+
+        # Получаем баланс с биржи или из .env
+        try:
+            starting_balance = await self.executor.get_balance()
+            if starting_balance <= 0:
+                raise ValueError("нулевой баланс")
+        except Exception as e:
+            logger.warning(f"Не удалось получить баланс с биржи: {e} — используем .env")
+            starting_balance = float(os.getenv("STARTING_BALANCE", 10000))
+
         # Portfolio
         portfolio = PortfolioState(
             balance=starting_balance,
             peak_balance=starting_balance
         )
+        self.portfolio = portfolio  # сохраняем для обновления баланса
+        logger.info(f"💰 Стартовый баланс: ${starting_balance:.2f}")
 
         # RiskManager — общий для лонга и шорта
         risk_manager = RiskManager(
@@ -124,14 +144,6 @@ class Orchestrator:
             daily_loss_limit=float(os.getenv("DAILY_LOSS_LIMIT", 5.0)),
             max_total_exposure_usd=float(os.getenv("MAX_TOTAL_EXPOSURE", 5000.0)),
         )
-
-        # BitgetExecutor — общий
-        self.executor = BitgetExecutor(ExecutorConfig(
-            symbol=symbols[0],
-            leverage=int(os.getenv("LEVERAGE", 3)),
-        ))
-        await self.executor.setup()
-        await self._load_state_from_exchange()
 
         # LearningEngine
         learning_engine = LearningEngine()
@@ -245,25 +257,39 @@ class Orchestrator:
     async def _start_all(self) -> None:
         logger.info("Оркестратор: запуск задач...")
 
-        self._tasks = [
-            asyncio.create_task(
-                self._run_with_restart(
-                    self.strategist_long.run_loop, "Дина-Лонг"),
-                name="dina-long"),
-            asyncio.create_task(
-                self._run_with_restart(
-                    self.strategist_short.run_loop, "Дина-Шорт"),
-                name="dina-short"),
-            asyncio.create_task(
-                self.safety_guard.run(),
-                name="safety-guard"),
+        self._tasks = []
+        # Дина-Лонг
+        if self.strategist_long:
+            self._tasks.append(
+                asyncio.create_task(
+                    self._run_with_restart(
+                        self.strategist_long.run_loop, "Дина-Лонг"),
+                    name="dina-long")
+            )
+        # Дина-Шорт
+        if self.strategist_short:
+            self._tasks.append(
+                asyncio.create_task(
+                    self._run_with_restart(
+                        self.strategist_short.run_loop, "Дина-Шорт"),
+                    name="dina-short")
+            )
+        # SafetyGuard
+        if self.safety_guard:
+            self._tasks.append(
+                asyncio.create_task(
+                    self.safety_guard.run(),
+                    name="safety-guard")
+            )
+        # Heartbeat
+        self._tasks.append(
             asyncio.create_task(
                 self._heartbeat_loop(),
-                name="heartbeat"),
-        ]
+                name="heartbeat")
+        )
 
-        # DataFeed если есть метод run
-        if hasattr(self.data_feed, "start"):
+        # DataFeed если есть метод start
+        if self.data_feed and hasattr(self.data_feed, "start"):
             self._tasks.append(
                 asyncio.create_task(
                     self._run_with_restart(self.data_feed.start, "DataFeed"),
@@ -271,7 +297,7 @@ class Orchestrator:
             )
 
         # Telegram bot если есть
-        if hasattr(self.bot, "run"):
+        if self.bot and hasattr(self.bot, "run"):
             self._tasks.append(
                 asyncio.create_task(
                     self._run_with_restart(self._run_telegram, "DinaBot"),
@@ -342,7 +368,7 @@ class Orchestrator:
     async def _run_telegram(self) -> None:
         """Запуск Telegram бота."""
         try:
-            if hasattr(self.bot, "run_sync"):
+            if self.bot and hasattr(self.bot, "run_sync"):
                 # Запускаем бота в отдельном потоке, чтобы избежать конфликтов с event loop
                 await asyncio.to_thread(self.bot.run_sync)
         except Exception as exc:
@@ -380,6 +406,88 @@ class Orchestrator:
         logger.info("Оркестратор: все задачи остановлены ✅")
 
     # ──────────────────────────────────────────────
+    # Трейлинг-стоп
+    # ──────────────────────────────────────────────
+
+    async def _update_trailing_stop(self, pos: dict):
+        """
+        Трейлинг-стоп по 4 шагам.
+        Вызывается из монитора для каждой открытой позиции.
+        """
+        symbol = pos["symbol"]
+        side = pos["side"]
+        entry = pos["entry_price"]
+        initial_sl = pos["initial_sl"]
+        current_sl = pos["current_sl"]
+        step = pos.get("trailing_step", 0)
+        current_price = pos["current_price"]  # должен быть в pos — см. ниже
+
+        # Считаем R
+        risk = abs(entry - initial_sl)
+        if risk == 0:
+            return
+
+        if side == "LONG":
+            r = (current_price - entry) / risk
+        else:  # SHORT
+            r = (entry - current_price) / risk
+
+        new_sl = current_sl
+        new_step = step
+
+        # Шаг 1 — breakeven
+        if step < 1 and r >= 0.5:
+            new_sl = entry
+            new_step = 1
+            logger.info(f"🔒 {symbol} Шаг 1: стоп → breakeven {new_sl:.4f}")
+            if self.bot:
+                await self.bot._send(f"🔒 {symbol} стоп перенесён на вход ({new_sl:.4f})")
+            event_logger.trailing_stop_moved(symbol, current_sl, new_sl, step=1)
+
+        # Шаг 2 — закрыть 25%, стоп на +0.5R
+        elif step < 2 and r >= 1.0:
+            new_sl = entry + risk * 0.5 if side == "LONG" else entry - risk * 0.5
+            new_step = 2
+            if self.executor:
+                await self.executor.partial_close(symbol, side, pct=0.25)
+            logger.info(f"💰 {symbol} Шаг 2: закрыто 25%, стоп → {new_sl:.4f}")
+            if self.bot:
+                await self.bot._send(f"💰 {symbol} закрыто 25% позиции\nСтоп: {new_sl:.4f}")
+            event_logger.partial_close(symbol, pct=25, price=current_price, step=2)
+            event_logger.trailing_stop_moved(symbol, current_sl, new_sl, step=2)
+
+        # Шаг 3 — закрыть ещё 25%, стоп на +1.0R
+        elif step < 3 and r >= 1.5:
+            new_sl = entry + risk * 1.0 if side == "LONG" else entry - risk * 1.0
+            new_step = 3
+            if self.executor:
+                await self.executor.partial_close(symbol, side, pct=0.25)
+            logger.info(f"💰 {symbol} Шаг 3: закрыто ещё 25%, стоп → {new_sl:.4f}")
+            if self.bot:
+                await self.bot._send(f"💰 {symbol} закрыто ещё 25% позиции\nСтоп: {new_sl:.4f}")
+            event_logger.partial_close(symbol, pct=25, price=current_price, step=3)
+            event_logger.trailing_stop_moved(symbol, current_sl, new_sl, step=3)
+
+        # Шаг 4 — закрыть всё
+        elif step < 4 and r >= 2.5:
+            new_step = 4
+            if self.executor:
+                await self.executor.close_position(symbol, side)
+            logger.info(f"🏁 {symbol} Шаг 4: закрыта вся позиция на +2.5R")
+            if self.bot:
+                await self.bot._send(f"🏁 {symbol} позиция закрыта полностью (+2.5R)")
+            event_logger.position_closed(symbol, side, pnl=0.0)
+
+        # Сохраняем новое состояние если что-то изменилось
+        if new_step != step:
+            self._last_known_positions[symbol]["current_sl"] = new_sl
+            self._last_known_positions[symbol]["trailing_step"] = new_step
+
+            # Двигаем реальный стоп на бирже
+            if new_step < 4 and self.executor:
+                await self.executor.move_stop_loss(symbol, side, new_sl)
+
+    # ──────────────────────────────────────────────
     # Монитор позиций
     # ──────────────────────────────────────────────
 
@@ -393,6 +501,21 @@ class Orchestrator:
 
         while self._monitor_running:
             try:
+                # Периодическое обновление баланса (каждые 5 минут ≈ 30 итераций)
+                self._balance_counter += 1
+                if self._balance_counter % 30 == 0:
+                    try:
+                        new_balance = await self.executor.get_balance()
+                        old_balance = self.portfolio.balance
+                        self.portfolio.balance = new_balance
+                        if new_balance > self.portfolio.peak_balance:
+                            self.portfolio.peak_balance = new_balance
+                        logger.info(f"💰 Баланс обновлён: ${old_balance:.2f} → ${new_balance:.2f}")
+                        if self.bot:
+                            await self.bot._send(f"💰 Баланс: ${new_balance:.2f}", priority="info")
+                    except Exception as e:
+                        logger.warning(f"Не удалось обновить баланс: {e}")
+
                 # Запрашиваем актуальные позиции из биржи
                 positions = await self.executor.get_open_positions()
                 current_symbols = {p["symbol"] for p in positions}
@@ -411,13 +534,17 @@ class Orchestrator:
                     }
                     self._event_log.append(event)
                     logger.info(f"✅ Новая позиция: {pos['side']} {symbol} {pos['size']} @ {pos['entry_price']}")
-                    await self.bot._send(f"✅ Открыта позиция\n{pos['side']} {symbol}\nРазмер: {pos['size']}\nВход: {pos['entry_price']:.2f}", priority="info")
+                    if self.bot:
+                        await self.bot._send(f"✅ Открыта позиция\n{pos['side']} {symbol}\nРазмер: {pos['size']}\nВход: {pos['entry_price']:.2f}", priority="info")
                     # Логируем событие
+                    # Получаем SL из позиции (если есть)
+                    sl = pos.get("initial_sl") or pos.get("current_sl") or 0.0
                     event_logger.position_opened(
                         symbol=symbol,
                         side=pos["side"],
                         size=pos["size"],
-                        entry=pos["entry_price"]
+                        entry=pos["entry_price"],
+                        sl=sl
                     )
 
                 # ❌ Позиция закрылась
@@ -431,15 +558,21 @@ class Orchestrator:
                     }
                     self._event_log.append(event)
                     logger.info(f"❌ Позиция закрыта: {pos['side']} {symbol}")
-                    await self.bot._send(f"❌ Позиция закрыта\n{pos['side']} {symbol}", priority="info")
+                    if self.bot:
+                        await self.bot._send(f"❌ Позиция закрыта\n{pos['side']} {symbol}", priority="info")
                     # Логируем событие
                     event_logger.position_closed(
                         symbol=symbol,
-                        side=pos["side"]
+                        side=pos["side"],
+                        pnl=None
                     )
 
                 # Обновляем состояние
                 self._last_known_positions = {p["symbol"]: p for p in positions}
+
+                # Трейлинг-стоп для каждой открытой позиции
+                for pos in positions:
+                    await self._update_trailing_stop(pos)
 
             except Exception as exc:
                 logger.warning(f"⚠ Монитор позиций: ошибка: {exc}")

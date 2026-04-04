@@ -103,7 +103,9 @@ class DataFeed:
                     await ws.ping()
                     continue
 
-                await self._handle_message(raw, symbol, tf)
+                # raw может быть bytes или str
+                raw_str = raw.decode() if isinstance(raw, bytes) else raw
+                await self._handle_message(raw_str, symbol, tf)
 
     async def _handle_message(self, raw: str, symbol: str, tf: str):
         try:

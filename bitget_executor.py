@@ -22,7 +22,7 @@ import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
 import aiosqlite
 import requests
@@ -129,6 +129,9 @@ class PositionInfo:
     leverage: int = 1
     margin: float = 0.0
     trade_id: str = ""
+    initial_sl: float = 0.0          # начальный стоп при входе
+    current_sl: float = 0.0          # текущий стоп (двигается трейлингом)
+    trailing_step: int = 0           # шаг трейлинга (0-4)
 
     @property
     def is_open(self) -> bool:
@@ -140,14 +143,14 @@ class PositionInfo:
 # ============================================================
 
 class BitgetExecutor:
-    def __init__(self, config: ExecutorConfig = None):
+    def __init__(self, config: Optional[ExecutorConfig] = None):
         self.cfg = config or ExecutorConfig()
-        self._client = None   # будет создан в setup()
+        self._client: Optional[Any] = None   # будет создан в setup()
         self._positions: Dict[str, PositionInfo] = {}
         self._position_ages: Dict[str, int] = {}   # symbol → age in checks
-        self._order_timestamps = deque()           # для rate limit
+        self._order_timestamps: deque[float] = deque()  # для rate limit
         self._execution_guard_paused = False
-        self._strategist = None
+        self._strategist: Optional[Any] = None
 
         logger.info(f"BitgetExecutor init | symbol={self.cfg.symbol} leverage={self.cfg.leverage}x dry_run={self.cfg.dry_run}")
         
@@ -163,7 +166,7 @@ class BitgetExecutor:
             return
 
         try:
-            from bitget.client import Client
+            from pybitget_client import Client
             self._client = Client(
                 api_key=self.cfg.api_key,
                 api_secret=self.cfg.api_secret,
@@ -259,6 +262,9 @@ class BitgetExecutor:
                 size=quantity,
                 avg_price=req.entry_price,
                 trade_id=req.client_oid,
+                initial_sl=req.sl_price,
+                current_sl=req.sl_price,
+                trailing_step=0,
             )
             self._position_ages[req.symbol] = 0
             return result
@@ -298,6 +304,9 @@ class BitgetExecutor:
             size=quantity,
             avg_price=result.filled_price,
             trade_id=req.client_oid,
+            initial_sl=req.sl_price,
+            current_sl=req.sl_price,
+            trailing_step=0,
         )
         self._position_ages[req.symbol] = 0
 
@@ -397,7 +406,7 @@ class BitgetExecutor:
         if self.cfg.dry_run:
             return []
         try:
-            from bitget.mix.position_api import PositionApi
+            from pybitget_client import PositionApi
             api = PositionApi(self._client)
             resp = await asyncio.get_event_loop().run_in_executor(
                 None,
@@ -425,6 +434,31 @@ class BitgetExecutor:
         except Exception as e:
             logger.error(f"BitgetExecutor: get_positions_from_exchange error: {e}")
             return []
+
+    async def get_balance(self) -> float:
+        """Возвращает доступный баланс USDT."""
+        if self.cfg.dry_run:
+            return float(getattr(self.cfg, "starting_balance", 10000))
+
+        try:
+            from pybitget_client import AccountApi
+            api = AccountApi(self._client)
+            resp = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: api.accounts(self.cfg.product_type)
+            )
+            data = resp.get("data", [])
+            if not data:
+                logger.warning("get_balance: пустой ответ от биржи")
+                return 0.0
+            # ищем USDT маржу
+            for account in data:
+                if account.get("marginCoin", "").upper() == "USDT":
+                    return float(account.get("available", 0))
+            return float(data[0].get("available", 0))
+        except Exception as e:
+            logger.error(f"get_balance error: {e}")
+            return 0.0
 
     # ============================================================
     # Внутренние методы API
@@ -457,22 +491,6 @@ class BitgetExecutor:
                         logger.warning(f"Restored position {pos.symbol} without SL, placed emergency SL @ {emergency_sl:.2f}")
                 # Восстанавливаем трейлинговое состояние из БД
                 await self._restore_trailing_state(pos.symbol)
-
-    async def _place_emergency_sl(self, symbol: str, sl_price: float, size: float, side: PositionSide):
-        # Выставляет SL через API
-        pass
-
-    async def _get_sl_order(self, symbol: str) -> Optional[str]:
-        # Запрос к бирже для получения активного SL ордера
-        return None
-
-    async def _get_atr(self, symbol: str) -> Optional[float]:
-        # Получение ATR через индикаторы
-        return None
-
-    async def _get_last_price(self, symbol: str) -> Optional[float]:
-        # Получение текущей цены через публичный endpoint
-        return None
 
     # ============================================================
     # ExecutionGuard
@@ -565,7 +583,7 @@ class BitgetExecutor:
     async def _set_leverage(self):
         """Устанавливает плечо и режим маржи."""
         try:
-            from bitget.mix.account_api import AccountApi
+            from pybitget_client import AccountApi
             api = AccountApi(self._client)
 
             # Margin mode
@@ -595,7 +613,7 @@ class BitgetExecutor:
             logger.warning(f"Failed to set leverage: {e}")
 
     async def _place_entry_order(self, req: OrderRequest, quantity: float) -> OrderResult:
-        from bitget.mix.order_api import OrderApi
+        from pybitget_client import OrderApi
         api = OrderApi(self._client)
 
         side = OrderSide.BUY if req.direction == "long" else OrderSide.SELL
@@ -629,7 +647,7 @@ class BitgetExecutor:
 
     async def _place_market_order(self, symbol: str, side: OrderSide, quantity: float,
                                    reduce_only: bool = False, client_oid: str = "") -> dict:
-        from bitget.mix.order_api import OrderApi
+        from pybitget_client import OrderApi
         api = OrderApi(self._client)
 
         params = {
@@ -650,7 +668,7 @@ class BitgetExecutor:
 
     async def _place_limit_order(self, symbol: str, side: OrderSide, quantity: float,
                                   price: float, client_oid: str = "") -> dict:
-        from bitget.mix.order_api import OrderApi
+        from pybitget_client import OrderApi
         api = OrderApi(self._client)
 
         resp = await asyncio.get_event_loop().run_in_executor(
@@ -671,7 +689,7 @@ class BitgetExecutor:
         return resp.get("data", {})
 
     async def _place_sl(self, req: OrderRequest, quantity: float) -> str:
-        from bitget.mix.order_api import OrderApi
+        from pybitget_client import OrderApi
         api = OrderApi(self._client)
 
         trigger_side = OrderSide.SELL if req.direction == "long" else OrderSide.BUY
@@ -698,7 +716,7 @@ class BitgetExecutor:
         return order_id
     async def _place_sl_raw(self, symbol: str, side: str, quantity: float, sl_price: float) -> str:
         """Внутренний метод для выставления SL по параметрам (без OrderRequest)."""
-        from bitget.mix.order_api import OrderApi
+        from pybitget_client import OrderApi
         api = OrderApi(self._client)
         trigger_side = OrderSide.SELL if side == "long" else OrderSide.BUY
         if self.cfg.dry_run:
@@ -795,7 +813,7 @@ class BitgetExecutor:
             return ""
 
         try:
-            from bitget.mix.order_api import OrderApi
+            from pybitget_client import OrderApi
             api = OrderApi(self._client)
 
             # Получаем список ожидающих план-ордеров
@@ -813,10 +831,10 @@ class BitgetExecutor:
                 return orders[0].get("orderId", "")
         except Exception as exc:
             logger.warning("_get_active_sl: ошибка запроса: %s", exc)
-        return ""            
+        return ""
 
     async def _place_tp(self, req: OrderRequest, quantity: float) -> str:
-        from bitget.mix.order_api import OrderApi
+        from pybitget_client import OrderApi
         api = OrderApi(self._client)
 
         trigger_side = OrderSide.SELL if req.direction == "long" else OrderSide.BUY
@@ -844,7 +862,7 @@ class BitgetExecutor:
 
     async def _cancel_plan_orders(self, symbol: str):
         try:
-            from bitget.mix.order_api import OrderApi
+            from pybitget_client import OrderApi
             api = OrderApi(self._client)
             await asyncio.get_event_loop().run_in_executor(
                 None,
@@ -859,7 +877,7 @@ class BitgetExecutor:
             logger.warning(f"Failed to cancel plan orders: {e}")
 
     async def _wait_fill(self, order_id: str, timeout: float = 5.0) -> Optional[float]:
-        from bitget.mix.order_api import OrderApi
+        from pybitget_client import OrderApi
         deadline = time.time() + timeout
         api = OrderApi(self._client)
 
@@ -927,7 +945,7 @@ class BitgetExecutor:
     async def _place_emergency_sl(self, symbol: str, sl_price: float, size: float, side: PositionSide):
         # Выставляет аварийный SL через API
         try:
-            from bitget.mix.order_api import OrderApi
+            from pybitget_client import OrderApi
             api = OrderApi(self._client)
 
             trigger_side = OrderSide.SELL if side == PositionSide.LONG else OrderSide.BUY
@@ -961,20 +979,92 @@ class BitgetExecutor:
 
     async def get_open_positions(self):
         """Возвращает список открытых позиций."""
+        # Возвращаем позиции из памяти (self._positions)
+        positions = []
+        for symbol, pos in self._positions.items():
+            if pos.is_open:
+                # Получаем текущую цену
+                current_price = await self._get_last_price(symbol)
+                positions.append({
+                    "symbol": pos.symbol,
+                    "side": pos.side.value,
+                    "size": pos.size,
+                    "entry_price": pos.avg_price,
+                    "initial_sl": pos.initial_sl,
+                    "current_sl": pos.current_sl,
+                    "trailing_step": pos.trailing_step,
+                    "trade_id": pos.trade_id,
+                    "current_price": current_price or 0.0,
+                })
+        return positions
+
+    async def partial_close(self, symbol: str, side: str, pct: float):
+        """Закрыть pct% позиции по рынку."""
+        pos = self._positions.get(symbol)
+        if not pos:
+            return
+        close_size = round(pos.size * pct, 6)
+        close_side = "sell" if side == "LONG" else "buy"
+        # dry-run — просто логируем
+        if self.cfg.dry_run:
+            logger.info(f"[DRY] partial_close {symbol} {pct*100:.0f}% size={close_size}")
+            pos.size = round(pos.size - close_size, 6)
+            return
+        # реальный режим — рыночный ордер на закрытие
+        # Используем _place_market_order с reduce_only=True
+        close_side_enum = OrderSide.SELL if side == "LONG" else OrderSide.BUY
+        await self._place_market_order(
+            symbol=symbol,
+            side=close_side_enum,
+            quantity=close_size,
+            reduce_only=True,
+        )
+
+    async def _cancel_sl_order(self, symbol: str):
+        """Отменяет активный стоп-лосс план-ордер для символа."""
+        if self.cfg.dry_run:
+            logger.info(f"[DRY] cancel_sl_order {symbol}")
+            return
         try:
-            for method in ("fetch_positions", "get_positions", "positions"):
-                fn = getattr(self, method, None)
-                if fn and method != "get_open_positions":
-                    result = await fn()
-                    return result or []
-            if self.cfg.dry_run:
-                return []
-            return []
-        except Exception as exc:
-            import logging
-            logging.getLogger("BitgetExecutor").error(
-                "get_open_positions error: %s", exc)
-            return []
+            from pybitget_client import OrderApi
+            api = OrderApi(self._client)
+            # Получаем список ожидающих план-ордеров типа loss_plan
+            resp = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: api.ordersPlanPending(
+                    symbol=symbol,
+                    productType=self.cfg.product_type,
+                    planType="pos_loss",
+                )
+            )
+            data = resp.get("data", {})
+            orders = data.get("entrustedList", [])
+            for order in orders:
+                order_id = order.get("orderId")
+                if order_id:
+                    await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: api.cancelPlanOrder(
+                            symbol=symbol,
+                            productType=self.cfg.product_type,
+                            orderId=order_id,
+                            planType="pos_loss",
+                        )
+                    )
+                    logger.info(f"Cancelled SL order {order_id} for {symbol}")
+        except Exception as e:
+            logger.error(f"Failed to cancel SL order for {symbol}: {e}")
+
+    async def move_stop_loss(self, symbol: str, side: str, new_sl: float):
+        """Переставить стоп-ордер на новую цену."""
+        if self.cfg.dry_run:
+            logger.info(f"[DRY] move_sl {symbol} → {new_sl}")
+            if symbol in self._positions:
+                self._positions[symbol].current_sl = new_sl
+            return
+        # реальный режим — отменить старый SL, поставить новый
+        await self._cancel_sl_order(symbol)
+        await self._place_sl_raw(symbol, side, self._positions[symbol].size, new_sl)
 
     async def _monitor_loop(self):
         """Запускается в отдельной задаче для управления позициями."""
