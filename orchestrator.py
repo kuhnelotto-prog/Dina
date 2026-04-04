@@ -131,12 +131,16 @@ class Orchestrator:
         await learning_engine.setup()
 
         # SignalBuilder — общий для обоих направлений
+        # Общий словарь для отслеживания времени последних сигналов
+        shared_signal_time: Dict[str, float] = {}
+        
         signal_builder_long = SignalBuilder(
             symbols=symbols,
             timeframes=timeframes,
             learning=learning_engine,
             direction="LONG",
             bus=self.bus,
+            shared_signal_time=shared_signal_time,
         )
         signal_builder_short = SignalBuilder(
             symbols=symbols,
@@ -144,6 +148,7 @@ class Orchestrator:
             learning=learning_engine,
             direction="SHORT",
             bus=self.bus,
+            shared_signal_time=shared_signal_time,
         )
 
         # DinaBot (Telegram)
@@ -327,9 +332,9 @@ class Orchestrator:
     async def _run_telegram(self) -> None:
         """Запуск Telegram бота."""
         try:
-            if hasattr(self.bot, "run"):
-                # Просто запускаем бота, run_polling() сам управляет своим event loop
-                await self.bot.run()
+            if hasattr(self.bot, "run_sync"):
+                # Запускаем бота в отдельном потоке, чтобы избежать конфликтов с event loop
+                await asyncio.to_thread(self.bot.run_sync)
         except Exception as exc:
             logger.error("DinaBot error: %s", exc)
             # Не поднимаем исключение дальше, чтобы не вызывать перезапуски

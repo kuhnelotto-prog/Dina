@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 class SignalBuilder:
     def __init__(self, symbols: List[str], timeframes: List[str] = None,
-                 learning=None, direction: str = "LONG", bus: EventBus = None):
+                 learning=None, direction: str = "LONG", bus: EventBus = None,
+                 shared_signal_time: Dict[str, float] = None):
         self._symbols = symbols
         self._timeframes = timeframes or ["15m", "1h", "4h"]
         self._learning = learning
@@ -47,7 +48,7 @@ class SignalBuilder:
 
         # Cooldown между сигналами
         self._signal_cooldown_sec: int = 300  # 5 минут
-        self._last_signal_time: Dict[str, float] = {}
+        self._last_signal_time: Dict[str, float] = shared_signal_time if shared_signal_time is not None else {}
 
     def _get_default_weights(self) -> dict:
         return {
