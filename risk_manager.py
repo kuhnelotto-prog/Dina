@@ -63,7 +63,7 @@ class RiskManager:
         self._daily_pnl: float = 0.0
         self._day_start: float = time.time()
 
-        logger.info(f"RiskManager init | max_pos={max_open_positions} | daily_limit={daily_loss_limit}% | total_exposure_limit=${max_total_exposure_usd}")
+        logger.info(f"RiskManager init | max_pos={max_open_positions} | daily_loss_limit={daily_loss_limit}% | total_exposure_limit=${max_total_exposure_usd}")
 
     # ============================================================
     # Основная проверка перед входом
@@ -118,7 +118,7 @@ class RiskManager:
                 reason="Correlation limit exceeded (same sector already open)"
             )
 
-        # 5. Расчёт размера через PositionSizer (учитывает просадку, серию, vol, conf)
+                # 5. Расчёт размера через PositionSizer (учитывает просадку, серию, vol, conf)
         size_result = self.sizer.calculate(
             portfolio=portfolio,
             entry_price=entry_price,
@@ -127,6 +127,7 @@ class RiskManager:
             atr_pct=atr_pct,
             win_rate=win_rate,
             avg_rr=avg_rr,
+            side=direction,
         )
 
         if size_result.decision == SizerDecision.HALT:

@@ -122,6 +122,7 @@ class PositionSizer:
         atr_pct: Optional[float] = None,
         win_rate: Optional[float] = None,
         avg_rr: Optional[float] = None,
+        side: str = "long",
     ) -> SizeResult:
         cfg = self.cfg
 
@@ -166,17 +167,38 @@ class PositionSizer:
             raw_risk = cfg.max_risk_pct
         risk_pct = max(cfg.min_risk_pct, raw_risk)
 
-        # 6. Расчёт позиции через SL distance
-        sl_dist_pct = abs(entry_price - sl_price) / entry_price * 100
-        if sl_dist_pct < 0.01:
-            sl_dist_pct = 0.5  # защита
+                                # 6. Расчёт позиции через SL distance
+        # Проверка направления стоп-лосса
+        if side.lower() == "long" and sl_price >= entry_price:
+            return SizeResult(
+                decision=SizerDecision.HALT,
+                halt_reason=f"Invalid SL for long: SL={sl_price} >= Entry={entry_price}"
+            )
+        if side.lower() == "short" and sl_price <= entry_price:
+            return SizeResult(
+                decision=SizerDecision.HALT,
+                halt_reason=f"Invalid SL for short: SL={sl_price} <= Entry={entry_price}"
+            )
+        
+                sl_dist_pct = abs(entry_price - sl_price) / entry_price * 100
+                if sl_dist_pct < 0.01:
+                    # Слишком маленький стоп - это ошибка, а не нормальная ситуация
+                    return SizeResult(
+                        decision=SizerDecision.HALT,
+                        halt_reason=f"Stop loss too small: {sl_dist_pct:.4f}% < 0.01%"
+                    )
+
+                # Проверка корректности плеча (используем локальную переменную)
+        leverage = cfg.leverage
+        if leverage < 1:
+            leverage = 1
 
         risk_usd = portfolio.balance * risk_pct / 100
         position_usd = risk_usd / (sl_dist_pct / 100)
-        units = (position_usd / entry_price) / cfg.leverage
+        units = (position_usd / entry_price) * leverage
 
-        # Решение: REDUCE если любой из множителей сильно снижен
-        is_reduced = (dd_mult < 0.9 or streak_mult < 0.9 or vol_mult < 0.9)
+                # Решение: REDUCE если любой из множителей сильно снижен
+        is_reduced = (dd_mult < 0.75 or streak_mult < 0.75 or vol_mult < 0.75 or conf_mult < 0.75)
         decision = SizerDecision.REDUCE if is_reduced else SizerDecision.TRADE
 
         return SizeResult(
@@ -201,6 +223,9 @@ class PositionSizer:
 
     def _conf_multiplier(self, confidence: float) -> float:
         cfg = self.cfg
+        # Проверка на равенство conf_max и conf_min
+        if cfg.conf_max == cfg.conf_min:
+            return 1.0
         conf = max(cfg.conf_min, min(confidence, cfg.conf_max))
         ratio = (conf - cfg.conf_min) / (cfg.conf_max - cfg.conf_min)
         mult = 0.60 + ratio * 0.40   # диапазон [0.60, 1.00]
