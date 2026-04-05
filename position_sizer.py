@@ -51,6 +51,9 @@ class SizerConfig:
     # Kelly fraction (0 = выключен)
     kelly_fraction: float = 0.25
 
+    # Плечо (умножение размера позиции)
+    leverage: int = 1
+
 
 @dataclass
 class PortfolioState:
@@ -170,7 +173,7 @@ class PositionSizer:
 
         risk_usd = portfolio.balance * risk_pct / 100
         position_usd = risk_usd / (sl_dist_pct / 100)
-        units = position_usd / entry_price
+        units = (position_usd / entry_price) / cfg.leverage
 
         # Решение: REDUCE если любой из множителей сильно снижен
         is_reduced = (dd_mult < 0.9 or streak_mult < 0.9 or vol_mult < 0.9)
