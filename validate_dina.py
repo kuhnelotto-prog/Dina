@@ -113,26 +113,26 @@ def test_position_sizer():
         sizer = PositionSizer(SizerConfig(base_risk_pct=1.0, max_risk_pct=2.0))
         portfolio = PortfolioState(balance=10000, peak_balance=10000)
 
-        # Нормальные условия
-        res = sizer.calculate(portfolio, entry_price=50000, sl_price=49000, confidence=0.8, atr_pct=1.5)
+                # Нормальные условия
+        res = sizer.calculate(portfolio, entry_price=50000, sl_price=49000, confidence=0.8, atr_pct=1.5, side="long")
         assert res.decision != SizerDecision.HALT
         assert 0 < res.risk_pct <= 2.0
         R.ok(f"Нормальные условия: risk={res.risk_pct:.2f}% pos=${res.position_usd:,.0f}")
 
-        # Высокий ATR
-        res2 = sizer.calculate(portfolio, entry_price=50000, sl_price=49000, confidence=0.8, atr_pct=4.5)
+                # Высокий ATR
+        res2 = sizer.calculate(portfolio, entry_price=50000, sl_price=49000, confidence=0.8, atr_pct=4.5, side="long")
         assert res2.position_usd < res.position_usd
         R.ok("Высокий ATR → позиция меньше")
 
-        # Просадка
+                # Просадка
         portfolio_dd = PortfolioState(balance=9000, peak_balance=10000)
-        res3 = sizer.calculate(portfolio_dd, entry_price=50000, sl_price=49000, confidence=0.8)
+        res3 = sizer.calculate(portfolio_dd, entry_price=50000, sl_price=49000, confidence=0.8, side="long")
         assert res3.drawdown_multiplier < 1.0
         R.ok("Просадка -10% → множитель уменьшен")
 
-        # HALT
+                # HALT
         portfolio_halt = PortfolioState(balance=8300, peak_balance=10000)
-        res4 = sizer.calculate(portfolio_halt, entry_price=50000, sl_price=49000, confidence=0.8)
+        res4 = sizer.calculate(portfolio_halt, entry_price=50000, sl_price=49000, confidence=0.8, side="long")
         assert res4.decision == SizerDecision.HALT
         R.ok("Просадка >15% → HALT")
     except Exception as e:
