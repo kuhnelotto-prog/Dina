@@ -334,7 +334,16 @@ class Backtester:
                 if "error" in indicators:
                     continue
 
-                # Calculate composite score (same logic as signal_builder.py)
+                # Filter 1: Trend filter — no longs in downtrend
+                if indicators["ema_fast"] < indicators["ema_slow"]:
+                    continue
+
+                # Filter 2: RSI > 70 — overbought, skip entry
+                rsi = indicators.get("rsi", 50)
+                if rsi > 70:
+                    continue
+
+                # Calculate composite score
                 composite = self._compute_composite(indicators, weights)
 
                 if composite > ENTRY_THRESHOLD:
@@ -366,21 +375,21 @@ class Backtester:
     def _compute_composite(indicators: dict, weights: dict) -> float:
         """
         Compute weighted composite score from indicators.
-        Replicates signal_builder.py logic for LONG direction.
-        Normalization: score / max_possible (sum of all weights).
+        LONG direction. Volume spike = multiplier, RSI < 30 = bonus.
+        Normalization: score / max_possible.
         Returns score from -1 to 1.
         """
         score = 0.0
 
-        # Max possible sum of all weights (for normalization)
+        # Max possible: all signal weights EXCEPT volume_spike (now a multiplier)
         max_possible = (
             weights.get("ema_cross", 1.0) +
-            weights.get("volume_spike", 1.0) +
             weights.get("engulfing", 0.8) +
             weights.get("fvg", 0.6) +
             weights.get("macd_cross", 0.5) +
             weights.get("bb_squeeze", 0.3) +
-            weights.get("sweep", 0.7)
+            weights.get("sweep", 0.7) +
+            weights.get("rsi_filter", 0.4)
         )
 
         # EMA cross (bullish: fast crossed above slow)
@@ -398,9 +407,10 @@ class Backtester:
         elif ema_cross_bear:
             score -= weights["ema_cross"]
 
-        # Volume spike
-        if indicators.get("volume_ratio", 1.0) > 1.2:
-            score += weights["volume_spike"]
+        # RSI filter: < 30 → bullish bonus
+        rsi = indicators.get("rsi", 50)
+        if rsi < 30:
+            score += weights.get("rsi_filter", 0.4)
 
         # Engulfing
         if indicators.get("engulfing_bull", False):
@@ -427,9 +437,15 @@ class Backtester:
         elif indicators.get("sweep_bear", False):
             score -= weights["sweep"]
 
+        # Normalize
         if max_possible > 0:
-            return score / max_possible
-        return 0.0
+            score = score / max_possible
+
+        # Volume spike as multiplier (not in score itself)
+        if indicators.get("volume_ratio", 1.0) > 1.2:
+            score *= 1.2
+
+        return score
 
 
 async def run_backtest(use_real_data=False):

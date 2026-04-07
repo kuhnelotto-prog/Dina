@@ -241,19 +241,20 @@ class SignalBuilder:
     def _calculate_composite(self, signals: dict, weights: dict) -> float:
         """
         Считает взвешенный композитный сигнал от -1 до 1.
-        Нормализация: сумма набранных весов / максимально возможная сумма всех весов.
+        Volume spike = множитель (×1.2), RSI < 30 = бонус.
+        Нормализация: score / max_possible.
         """
         score = 0.0
 
-        # Максимально возможная сумма всех весов (для нормализации)
+        # Максимально возможная сумма (без volume_spike — он теперь множитель)
         max_possible = (
             weights.get("ema_cross", 1.0) +
-            weights.get("volume_spike", 1.0) +
             weights.get("engulfing", 0.8) +
             weights.get("fvg", 0.6) +
             weights.get("macd_cross", 0.5) +
             weights.get("bb_squeeze", 0.3) +
-            weights.get("sweep", 0.7)
+            weights.get("sweep", 0.7) +
+            weights.get("rsi_filter", 0.4)
         )
 
         # Направление: для LONG-бота +1 для бычьих, -1 для медвежьих; для SHORT наоборот
@@ -264,6 +265,11 @@ class SignalBuilder:
         elif signals["ema_cross_bear"]:
             score += weights.get("ema_cross", 1.0) * -direction_mult
 
+        # RSI filter: < 30 → бычий бонус
+        rsi = signals.get("rsi", 50)
+        if rsi < 30:
+            score += weights.get("rsi_filter", 0.4) * direction_mult
+
         if signals["engulfing_bull"]:
             score += weights.get("engulfing", 0.8) * direction_mult
         elif signals["engulfing_bear"]:
@@ -273,9 +279,6 @@ class SignalBuilder:
             score += weights.get("fvg", 0.6) * direction_mult
         elif signals["fvg_bear"]:
             score += weights.get("fvg", 0.6) * -direction_mult
-
-        if signals["volume_spike"]:
-            score += weights.get("volume_spike", 1.0) * direction_mult
 
         if signals["macd_cross"]:
             score += weights.get("macd_cross", 0.5) * direction_mult
@@ -288,9 +291,15 @@ class SignalBuilder:
         elif signals["sweep_bear"]:
             score += weights.get("sweep", 0.7) * -direction_mult
 
+        # Нормализация
         if max_possible > 0:
-            return score / max_possible
-        return 0.0
+            score = score / max_possible
+
+        # Volume spike как множитель (не в score)
+        if signals.get("volume_spike", False):
+            score *= 1.2
+
+        return score
 
     def get_signal_summary(self, symbol: str) -> dict:
         if symbol not in self._last_signals:
