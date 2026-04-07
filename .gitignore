@@ -52,3 +52,9 @@ logs/
 # Temp files
 temp/
 tmp/
+
+# Backtest results
+backtest_results.json
+
+# Test environment file
+test_env.txt
