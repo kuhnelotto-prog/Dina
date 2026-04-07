@@ -16,6 +16,8 @@ import json
 import requests
 import time
 
+from indicators_calc import IndicatorsCalculator
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -288,9 +290,24 @@ class Backtester:
         return df
 
     def _run_backtest(self, df, symbol):
-        """Core backtest logic."""
+        """Core backtest logic — uses IndicatorsCalculator + composite score."""
         result = BacktestResult(self.initial_balance)
         open_positions = {}
+        calc = IndicatorsCalculator()
+
+        # Signal weights (same as signal_builder.py defaults)
+        weights = {
+            "ema_cross": 1.0,
+            "volume_spike": 1.0,
+            "engulfing": 0.8,
+            "fvg": 0.6,
+            "macd_cross": 0.5,
+            "rsi_filter": 0.4,
+            "bb_squeeze": 0.3,
+            "sweep": 0.7,
+        }
+
+        ENTRY_THRESHOLD = 0.2  # composite_score > 0.2 → enter long
 
         for i, (timestamp, row) in enumerate(df.iterrows()):
             if i % 50 == 0:
@@ -298,6 +315,7 @@ class Backtester:
 
             current_price = row['close']
 
+            # Update open positions
             for sym in list(open_positions.keys()):
                 position = open_positions[sym]
                 closed, _ = position.update(current_price)
@@ -306,28 +324,36 @@ class Backtester:
                     del open_positions[sym]
                     result.add_trade(position)
 
-            if len(open_positions) == 0 and i > 20:
-                lookback = 20
-                if i >= lookback:
-                    max_price = df['high'].iloc[i-lookback:i].max()
+            # Need at least 30 candles for indicators
+            if len(open_positions) == 0 and i >= 30:
+                # Compute indicators on all candles up to current
+                slice_df = df.iloc[:i+1].copy()
+                slice_df.reset_index(inplace=True)
+                indicators = calc.compute(slice_df)
 
-                    if current_price <= max_price * 0.98:
-                        sl_price = current_price * 0.97
-                        tp_price = current_price * 1.05
-                        position_size = result.final_balance * 0.1
+                if "error" in indicators:
+                    continue
 
-                        position = BacktestPosition(
-                            symbol=symbol,
-                            side="long",
-                            entry_price=current_price,
-                            size_usd=position_size,
-                            sl_price=sl_price,
-                            tp_price=tp_price,
-                            timestamp=timestamp
-                        )
+                # Calculate composite score (same logic as signal_builder.py)
+                composite = self._compute_composite(indicators, weights)
 
-                        open_positions[symbol] = position
-                        logger.info(f"Opened position: {symbol} long | Price: {current_price:.2f}")
+                if composite > ENTRY_THRESHOLD:
+                    sl_price = current_price * 0.97
+                    tp_price = current_price * 1.05
+                    position_size = result.final_balance * 0.1
+
+                    position = BacktestPosition(
+                        symbol=symbol,
+                        side="long",
+                        entry_price=current_price,
+                        size_usd=position_size,
+                        sl_price=sl_price,
+                        tp_price=tp_price,
+                        timestamp=timestamp
+                    )
+
+                    open_positions[symbol] = position
+                    logger.info(f"Opened position: {symbol} long | Price: {current_price:.2f} | Score: {composite:.3f}")
 
         for sym, position in list(open_positions.items()):
             last_price = df.iloc[-1]['close']
@@ -335,6 +361,74 @@ class Backtester:
             result.add_trade(position)
 
         return result
+
+    @staticmethod
+    def _compute_composite(indicators: dict, weights: dict) -> float:
+        """
+        Compute weighted composite score from indicators.
+        Replicates signal_builder.py logic for LONG direction.
+        Returns score from -1 to 1.
+        """
+        score = 0.0
+        total_w = 0.0
+
+        # EMA cross (bullish: fast crossed above slow)
+        ema_cross_bull = (
+            indicators["ema_fast"] > indicators["ema_slow"] and
+            indicators.get("ema_fast_prev", 0) <= indicators.get("ema_slow_prev", 0)
+        )
+        ema_cross_bear = (
+            indicators["ema_fast"] < indicators["ema_slow"] and
+            indicators.get("ema_fast_prev", 0) >= indicators.get("ema_slow_prev", 0)
+        )
+
+        if ema_cross_bull:
+            score += weights["ema_cross"]
+            total_w += weights["ema_cross"]
+        elif ema_cross_bear:
+            score -= weights["ema_cross"]
+            total_w += weights["ema_cross"]
+
+        # Volume spike
+        if indicators.get("volume_ratio", 1.0) > 1.2:
+            score += weights["volume_spike"]
+            total_w += weights["volume_spike"]
+
+        # Engulfing
+        if indicators.get("engulfing_bull", False):
+            score += weights["engulfing"]
+            total_w += weights["engulfing"]
+        elif indicators.get("engulfing_bear", False):
+            score -= weights["engulfing"]
+            total_w += weights["engulfing"]
+
+        # FVG
+        if indicators.get("fvg_bull", False):
+            score += weights["fvg"]
+            total_w += weights["fvg"]
+        elif indicators.get("fvg_bear", False):
+            score -= weights["fvg"]
+            total_w += weights["fvg"]
+
+        # Bollinger squeeze
+        bb_mid = indicators.get("bb_middle", 0)
+        if bb_mid > 0:
+            bb_width = (indicators["bb_upper"] - indicators["bb_lower"]) / bb_mid
+            if bb_width < 0.05:
+                score += weights["bb_squeeze"]
+                total_w += weights["bb_squeeze"]
+
+        # Sweep
+        if indicators.get("sweep_bull", False):
+            score += weights["sweep"]
+            total_w += weights["sweep"]
+        elif indicators.get("sweep_bear", False):
+            score -= weights["sweep"]
+            total_w += weights["sweep"]
+
+        if total_w > 0:
+            return score / total_w
+        return 0.0
 
 
 async def run_backtest(use_real_data=False):
