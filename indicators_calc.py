@@ -25,11 +25,11 @@ class IndicatorsCalculator:
         if df is None or len(df) < 30:
             return {
                 "error": "insufficient_data",
-                "rsi": 50,
-                "atr": 0,
-                "atr_pct": 0,
-                "ema_fast": 0,
-                "ema_slow": 0
+                "rsi": 0.0,
+                "atr": 0.0,
+                "atr_pct": 0.0,
+                "ema_fast": 0.0,
+                "ema_slow": 0.0
             }
 
         df = self._ensure_ascending(df)
@@ -78,24 +78,20 @@ class IndicatorsCalculator:
         }
 
         # Свечные паттерны + FVG + Sweep
-        result.update(self._check_patterns(df))
-        result.update(self._check_sweep(df))
+        result.update(self._check_patterns(df, last, prev, pprev))
+        result.update(self._check_sweep(df, last, prev))
 
         return result
 
-    def _check_patterns(self, df: pd.DataFrame) -> dict:
+    def _check_patterns(self, df: pd.DataFrame, last: int, prev: int, pprev: int) -> dict:
         """Проверяет свечные паттерны и FVG."""
-        if len(df) < 3:
+        if pprev < 0:
             return {
                 "engulfing_bull": False,
                 "engulfing_bear": False,
                 "fvg_bull": False,
                 "fvg_bear": False
             }
-        
-        last = len(df) - 1
-        prev = len(df) - 2
-        pprev = len(df) - 3
 
         close = df["close"]
         open_ = df["open"]
@@ -137,16 +133,13 @@ class IndicatorsCalculator:
             "fvg_bear": fvg_bear
         }
 
-    def _check_sweep(self, df: pd.DataFrame) -> dict:
+    def _check_sweep(self, df: pd.DataFrame, last: int, prev: int) -> dict:
         """
         Проверяет Liquidity Sweep: цена пробила предыдущий хай/лой,
         но закрылась внутри диапазона (разворот).
         """
-        if len(df) < 3:
+        if prev < 0:
             return {"sweep_bull": False, "sweep_bear": False}
-
-        last = len(df) - 1
-        prev = len(df) - 2
 
         high = df["high"]
         low = df["low"]
