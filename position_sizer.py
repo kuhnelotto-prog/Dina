@@ -194,7 +194,7 @@ class PositionSizer:
             leverage = 1
 
         risk_usd = portfolio.balance * risk_pct / 100
-        position_usd = risk_usd / (sl_dist_pct / 100)
+        position_usd = (risk_usd / (sl_dist_pct / 100)) * leverage
         units = position_usd / entry_price
 
         # Решение: REDUCE если любой из множителей сильно снижен

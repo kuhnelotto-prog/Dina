@@ -103,7 +103,10 @@ class RiskManager:
 
         # 3. Общая экспозиция (сумма size_usd всех открытых позиций)
         total_exposure = sum(p.get("size_usd", 0) for p in self._open_positions.values())
-        if total_exposure + (entry_price * self.sizer.cfg.base_risk_pct / 100 * portfolio.balance) > self.max_total_exposure_usd:
+        # Оценка размера новой позиции: risk_usd / sl_distance * leverage
+        sl_dist_pct = abs(entry_price - sl_price) / entry_price if entry_price > 0 else 0.01
+        estimated_position_usd = (portfolio.balance * self.sizer.cfg.base_risk_pct / 100) / max(sl_dist_pct, 0.001)
+        if total_exposure + estimated_position_usd > self.max_total_exposure_usd:
             return RiskStatus(
                 allowed=False,
                 state=DrawdownState.NORMAL,

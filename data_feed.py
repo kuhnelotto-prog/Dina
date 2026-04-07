@@ -34,11 +34,18 @@ class DataFeed:
         self,
         symbols: List[str],
         timeframes: List[str],
-        signal_builder: SignalBuilder,
+        signal_builders: "List[SignalBuilder] | SignalBuilder" = None,
+        signal_builder: "SignalBuilder | None" = None,
     ):
         self.symbols = symbols
         self.timeframes = timeframes
-        self.signal_builder = signal_builder
+        # Support both single signal_builder (backward compat) and list
+        if signal_builders is not None:
+            self._signal_builders = signal_builders if isinstance(signal_builders, list) else [signal_builders]
+        elif signal_builder is not None:
+            self._signal_builders = [signal_builder]
+        else:
+            self._signal_builders = []
         self._running = False
         self._candle_buf: Dict[tuple, list] = {}
 
@@ -146,7 +153,8 @@ class DataFeed:
             )
             df["ts"] = pd.to_datetime(df["ts"], unit="s")
             df = df.set_index("ts")
-            await self.signal_builder.update_candle(symbol, tf, df)
+            for sb in self._signal_builders:
+                await sb.update_candle(symbol, tf, df)
             logger.debug(
                 "DataFeed: обновлён кэш %s %s (%d свечей)",
                 symbol, tf, len(buf),

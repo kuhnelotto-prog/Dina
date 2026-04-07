@@ -246,12 +246,11 @@ class SignalBuilder:
         """
         score = 0.0
 
-        # Максимально возможная сумма (без volume_spike — он теперь множитель)
+        # Максимально возможная сумма (без volume_spike и macd_cross — оба отключены)
         max_possible = (
             weights.get("ema_cross", 1.0) +
             weights.get("engulfing", 0.8) +
             weights.get("fvg", 0.6) +
-            weights.get("macd_cross", 0.5) +
             weights.get("bb_squeeze", 0.3) +
             weights.get("sweep", 0.7) +
             weights.get("rsi_filter", 0.4)

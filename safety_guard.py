@@ -78,9 +78,9 @@ class SafetyGuard:
 
     async def _check_fast_drawdown(self, pos: dict) -> None:
         symbol = pos.get("symbol", "?")
-        side = pos.get("holdSide", "long")
-        entry = float(pos.get("openPriceAvg") or pos.get("averageOpenPrice") or 0)
-        mark = float(pos.get("markPrice") or 0)
+        side = pos.get("holdSide") or pos.get("side", "long")
+        entry = float(pos.get("openPriceAvg") or pos.get("averageOpenPrice") or pos.get("entry_price") or 0)
+        mark = float(pos.get("markPrice") or pos.get("current_price") or 0)
 
         if entry <= 0 or mark <= 0:
             return
