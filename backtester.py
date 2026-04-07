@@ -347,8 +347,16 @@ class Backtester:
                 composite = self._compute_composite(indicators, weights)
 
                 if composite > ENTRY_THRESHOLD:
-                    sl_price = current_price * 0.97
-                    tp_price = current_price * 1.05
+                    # ATR-based SL/TP (fallback to fixed if ATR unavailable)
+                    atr_pct = indicators.get("atr_pct", 0)
+                    if atr_pct > 0.1:  # ATR valid (> 0.1%)
+                        sl_pct = 1.5 * atr_pct / 100   # 1.5 × ATR
+                        tp_pct = 3.0 * atr_pct / 100   # 3.0 × ATR
+                    else:
+                        sl_pct = 0.03   # fallback 3%
+                        tp_pct = 0.05   # fallback 5%
+                    sl_price = current_price * (1 - sl_pct)
+                    tp_price = current_price * (1 + tp_pct)
                     position_size = result.final_balance * 0.1
 
                     position = BacktestPosition(
