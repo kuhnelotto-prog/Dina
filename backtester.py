@@ -367,10 +367,21 @@ class Backtester:
         """
         Compute weighted composite score from indicators.
         Replicates signal_builder.py logic for LONG direction.
+        Normalization: score / max_possible (sum of all weights).
         Returns score from -1 to 1.
         """
         score = 0.0
-        total_w = 0.0
+
+        # Max possible sum of all weights (for normalization)
+        max_possible = (
+            weights.get("ema_cross", 1.0) +
+            weights.get("volume_spike", 1.0) +
+            weights.get("engulfing", 0.8) +
+            weights.get("fvg", 0.6) +
+            weights.get("macd_cross", 0.5) +
+            weights.get("bb_squeeze", 0.3) +
+            weights.get("sweep", 0.7)
+        )
 
         # EMA cross (bullish: fast crossed above slow)
         ema_cross_bull = (
@@ -384,31 +395,24 @@ class Backtester:
 
         if ema_cross_bull:
             score += weights["ema_cross"]
-            total_w += weights["ema_cross"]
         elif ema_cross_bear:
             score -= weights["ema_cross"]
-            total_w += weights["ema_cross"]
 
         # Volume spike
         if indicators.get("volume_ratio", 1.0) > 1.2:
             score += weights["volume_spike"]
-            total_w += weights["volume_spike"]
 
         # Engulfing
         if indicators.get("engulfing_bull", False):
             score += weights["engulfing"]
-            total_w += weights["engulfing"]
         elif indicators.get("engulfing_bear", False):
             score -= weights["engulfing"]
-            total_w += weights["engulfing"]
 
         # FVG
         if indicators.get("fvg_bull", False):
             score += weights["fvg"]
-            total_w += weights["fvg"]
         elif indicators.get("fvg_bear", False):
             score -= weights["fvg"]
-            total_w += weights["fvg"]
 
         # Bollinger squeeze
         bb_mid = indicators.get("bb_middle", 0)
@@ -416,18 +420,15 @@ class Backtester:
             bb_width = (indicators["bb_upper"] - indicators["bb_lower"]) / bb_mid
             if bb_width < 0.05:
                 score += weights["bb_squeeze"]
-                total_w += weights["bb_squeeze"]
 
         # Sweep
         if indicators.get("sweep_bull", False):
             score += weights["sweep"]
-            total_w += weights["sweep"]
         elif indicators.get("sweep_bear", False):
             score -= weights["sweep"]
-            total_w += weights["sweep"]
 
-        if total_w > 0:
-            return score / total_w
+        if max_possible > 0:
+            return score / max_possible
         return 0.0
 
 

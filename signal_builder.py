@@ -241,55 +241,55 @@ class SignalBuilder:
     def _calculate_composite(self, signals: dict, weights: dict) -> float:
         """
         Считает взвешенный композитный сигнал от -1 до 1.
+        Нормализация: сумма набранных весов / максимально возможная сумма всех весов.
         """
         score = 0.0
-        total_w = 0.0
+
+        # Максимально возможная сумма всех весов (для нормализации)
+        max_possible = (
+            weights.get("ema_cross", 1.0) +
+            weights.get("volume_spike", 1.0) +
+            weights.get("engulfing", 0.8) +
+            weights.get("fvg", 0.6) +
+            weights.get("macd_cross", 0.5) +
+            weights.get("bb_squeeze", 0.3) +
+            weights.get("sweep", 0.7)
+        )
 
         # Направление: для LONG-бота +1 для бычьих, -1 для медвежьих; для SHORT наоборот
         direction_mult = 1 if self._direction == "LONG" else -1
 
         if signals["ema_cross_bull"]:
             score += weights.get("ema_cross", 1.0) * direction_mult
-            total_w += weights.get("ema_cross", 1.0)
         elif signals["ema_cross_bear"]:
             score += weights.get("ema_cross", 1.0) * -direction_mult
-            total_w += weights.get("ema_cross", 1.0)
 
         if signals["engulfing_bull"]:
             score += weights.get("engulfing", 0.8) * direction_mult
-            total_w += weights.get("engulfing", 0.8)
         elif signals["engulfing_bear"]:
             score += weights.get("engulfing", 0.8) * -direction_mult
-            total_w += weights.get("engulfing", 0.8)
 
         if signals["fvg_bull"]:
             score += weights.get("fvg", 0.6) * direction_mult
-            total_w += weights.get("fvg", 0.6)
         elif signals["fvg_bear"]:
             score += weights.get("fvg", 0.6) * -direction_mult
-            total_w += weights.get("fvg", 0.6)
 
         if signals["volume_spike"]:
             score += weights.get("volume_spike", 1.0) * direction_mult
-            total_w += weights.get("volume_spike", 1.0)
 
         if signals["macd_cross"]:
             score += weights.get("macd_cross", 0.5) * direction_mult
-            total_w += weights.get("macd_cross", 0.5)
 
         if signals["bb_squeeze"]:
             score += weights.get("bb_squeeze", 0.3)
-            total_w += weights.get("bb_squeeze", 0.3)
 
         if signals["sweep_bull"]:
             score += weights.get("sweep", 0.7) * direction_mult
-            total_w += weights.get("sweep", 0.7)
         elif signals["sweep_bear"]:
             score += weights.get("sweep", 0.7) * -direction_mult
-            total_w += weights.get("sweep", 0.7)
 
-        if total_w > 0:
-            return score / total_w
+        if max_possible > 0:
+            return score / max_possible
         return 0.0
 
     def get_signal_summary(self, symbol: str) -> dict:
