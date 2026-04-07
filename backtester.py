@@ -13,13 +13,15 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import json
+import requests
+import time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 START_BALANCE = 10000.0
-START_DATE = datetime.now() - timedelta(days=180)
-END_DATE = datetime.now()
+START_DATE = datetime.utcnow() - timedelta(days=90)
+END_DATE = datetime.utcnow() - timedelta(minutes=5)
 
 
 class BacktestPosition:
@@ -140,18 +142,22 @@ class BacktestResult:
 
 class Backtester:
     """Main backtester class for Dina."""
-    def __init__(self, initial_balance=10000.0):
+    def __init__(self, initial_balance=10000.0, use_real_data=False):
         self.initial_balance = initial_balance
+        self.use_real_data = use_real_data
         self.result = None
 
     def run(self, df=None, symbol="BTCUSDT"):
         """
         Run backtest on provided DataFrame.
-        If df is None, generates synthetic data.
+        If df is None, generates synthetic or real data.
         Returns BacktestResult.
         """
         if df is None:
-            df = self._generate_test_data(symbol)
+            if self.use_real_data:
+                df = self._fetch_real_data(symbol)
+            else:
+                df = self._generate_test_data(symbol)
         self.result = self._run_backtest(df, symbol)
         return self.result
 
@@ -171,6 +177,114 @@ class Backtester:
         })
         df.set_index('timestamp', inplace=True)
         logger.info(f"Generated {len(df)} test candles for {symbol}")
+        return df
+
+    def _fetch_real_data(self, symbol, timeframe="4h"):
+        """
+        Fetch real historical candles from Bitget public API.
+        Returns DataFrame with columns: timestamp, open, high, low, close, volume.
+        """
+        # Map timeframe to Bitget granularity
+        tf_map = {
+            "1m": "1m",
+            "5m": "5m",
+            "15m": "15m",
+            "30m": "30m",
+            "1h": "1H",
+            "4h": "4H",
+            "12h": "12H",
+            "1d": "1D",
+            "1w": "1W",
+        }
+        granularity = tf_map.get(timeframe, "4H")
+        # Ensure we use 4H granularity
+        if timeframe == "4h":
+            granularity = "4H"
+            logger.info(f"Using granularity: {granularity} for timeframe {timeframe}")
+        # Bitget USDT-FUTURES product type
+        product_type = "umcbl"
+        limit = 1000  # max per request
+        all_candles = []
+        end_time = int(END_DATE.timestamp() * 1000)
+        start_time = int(START_DATE.timestamp() * 1000)
+
+        logger.info(f"Fetching real historical data for {symbol} {timeframe} from {START_DATE} to {END_DATE}")
+        logger.info(f"start_time={start_time} ({datetime.fromtimestamp(start_time/1000)}), end_time={end_time} ({datetime.fromtimestamp(end_time/1000)})")
+
+        current_end = end_time
+        iteration = 0
+        max_iterations = 10  # safety limit
+        while current_end > start_time and iteration < max_iterations:
+            iteration += 1
+            logger.info(f"Iteration {iteration}: current_end={current_end} ({datetime.fromtimestamp(current_end/1000)})")
+            url = "https://api.bitget.com/api/v2/mix/market/candles"
+            params = {
+                "symbol": symbol,
+                "granularity": granularity,
+                "limit": limit,
+                "endTime": current_end,
+                "startTime": start_time,
+                "productType": product_type,
+            }
+            try:
+                response = requests.get(url, params=params, timeout=30)
+                data = response.json()
+                if data.get("code") != "00000" or not data.get("data"):
+                    logger.warning(f"API error: {data.get('msg')}")
+                    logger.warning(f"Response: {data}")
+                    break
+                candles = data["data"]
+                if not candles:
+                    logger.info("No more candles returned")
+                    break
+                logger.info(f"Received {len(candles)} candles")
+                # candles are returned in reverse chronological order (newest first)
+                # each candle: [ts, open, high, low, close, volume, quoteVol]
+                for c in candles:
+                    ts = int(c[0])
+                    all_candles.append([
+                        ts,
+                        float(c[1]),
+                        float(c[2]),
+                        float(c[3]),
+                        float(c[4]),
+                        float(c[5]),
+                    ])
+                logger.info(f"Added {len(candles)} candles to dataset")
+                # If we received fewer candles than limit, we've got all data
+                if len(candles) < limit:
+                    logger.info(f"Received {len(candles)} < limit {limit}, assuming all data fetched")
+                    break
+                # Move window backward: set current_end to earliest timestamp - 1
+                earliest_ts = int(candles[-1][0])
+                logger.info(f"Earliest timestamp: {earliest_ts} ({datetime.fromtimestamp(earliest_ts/1000)})")
+                if earliest_ts >= current_end:
+                    logger.info("Earliest timestamp >= current_end, breaking")
+                    break
+                current_end = earliest_ts - 1
+                time.sleep(0.1)  # rate limiting
+            except Exception as e:
+                logger.error(f"Error fetching historical data: {e}")
+                break
+        logger.info(f"Finished fetching after {iteration} iterations, total candles: {len(all_candles)}")
+
+        if not all_candles:
+            logger.warning("No real data fetched, falling back to synthetic data")
+            return self._generate_test_data(symbol)
+
+        # Convert to DataFrame
+        df = pd.DataFrame(
+            all_candles,
+            columns=["timestamp", "open", "high", "low", "close", "volume"]
+        )
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        df = df.sort_values("timestamp").reset_index(drop=True)
+        df.set_index("timestamp", inplace=True)
+        logger.info(f"Fetched {len(df)} real candles for {symbol}")
+        # Validate expected count
+        expected = 90 * 6  # 90 days * 6 candles per day (4h)
+        if len(df) != expected:
+            logger.warning(f"Expected ~{expected} candles for 90 days at 4h, but got {len(df)}. Data may be incomplete or overlapping.")
         return df
 
     def _run_backtest(self, df, symbol):
@@ -223,10 +337,19 @@ class Backtester:
         return result
 
 
-async def run_backtest():
+async def run_backtest(use_real_data=False):
     """Standalone async entry point."""
-    logger.info("Starting Dina backtest for 180 days...")
-    bt = Backtester(initial_balance=START_BALANCE)
+    import os
+    # Remove previous results to avoid caching
+    if os.path.exists('backtest_results.json'):
+        os.remove('backtest_results.json')
+        logger.info("Removed previous backtest_results.json")
+    
+    if use_real_data:
+        logger.info("Starting Dina backtest for 90 days with REAL historical data...")
+    else:
+        logger.info("Starting Dina backtest for 90 days with SYNTHETIC data...")
+    bt = Backtester(initial_balance=START_BALANCE, use_real_data=use_real_data)
     result = bt.run()
     result.print_summary()
 
@@ -247,4 +370,8 @@ async def run_backtest():
 
 
 if __name__ == "__main__":
-    asyncio.run(run_backtest())
+    import argparse
+    parser = argparse.ArgumentParser(description="Run Dina backtest")
+    parser.add_argument("--real", action="store_true", help="Use real historical data from Bitget")
+    args = parser.parse_args()
+    asyncio.run(run_backtest(use_real_data=args.real))
