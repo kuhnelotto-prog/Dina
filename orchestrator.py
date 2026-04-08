@@ -172,10 +172,11 @@ class Orchestrator:
             startup_msg = "🚀 Дина запущена (dry‑run режим)" if self.executor.cfg.dry_run else "🚀 Дина запущена"
             await self.bot._send(startup_msg, priority="info")
 
-        # DataFeed — оба SignalBuilder получают данные
+        # DataFeed — оба SignalBuilder получают данные + risk_manager получает 4H для корреляции
         self.data_feed = DataFeed(
             symbols, timeframes,
             signal_builders=[signal_builder_long, signal_builder_short],
+            risk_manager=self.risk_manager,
         )
 
         # Дина-Лонг

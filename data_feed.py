@@ -36,6 +36,7 @@ class DataFeed:
         timeframes: List[str],
         signal_builders: "List[SignalBuilder] | SignalBuilder" = None,
         signal_builder: "SignalBuilder | None" = None,
+        risk_manager=None,
     ):
         self.symbols = symbols
         self.timeframes = timeframes
@@ -46,6 +47,7 @@ class DataFeed:
             self._signal_builders = [signal_builder]
         else:
             self._signal_builders = []
+        self._risk_manager = risk_manager
         self._running = False
         self._candle_buf: Dict[tuple, list] = {}
 
@@ -155,6 +157,11 @@ class DataFeed:
             df = df.set_index("ts")
             for sb in self._signal_builders:
                 await sb.update_candle(symbol, tf, df)
+
+            # Передаём 4H свечи в RiskManager для расчёта корреляции секторов
+            if tf == "4h" and self._risk_manager is not None:
+                self._risk_manager.update_candles(symbol, df)
+
             logger.debug(
                 "DataFeed: обновлён кэш %s %s (%d свечей)",
                 symbol, tf, len(buf),
