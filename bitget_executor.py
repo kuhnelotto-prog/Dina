@@ -59,9 +59,16 @@ class ExecutorConfig:
     trailing_step_atr: float = 0.2
     trailing_dist_atr: float = 1.2          # отступ SL от цены
 
-    # Position age timeout (в количестве проверок _monitor_loop, примерное соответствие свечам)
-    max_hold_checks: int = 48               # 48 проверок * 10 сек = 8 часов (для 15m)
-    min_expected_pnl_pct: float = 0.5
+    # Position age timeout — динамический (48/72/96 часов в зависимости от PnL в ATR)
+    # Базовый таймаут: 48 часов. Если PnL > 1 ATR → 72ч, > 2 ATR → 96ч
+    base_timeout_hours: float = 48.0
+    mid_timeout_hours: float = 72.0
+    max_timeout_hours: float = 96.0
+    timeout_atr_mid: float = 1.0            # PnL > 1 ATR → mid timeout
+    timeout_atr_max: float = 2.0            # PnL > 2 ATR → max timeout
+    min_expected_pnl_pct: float = 0.5       # минимальный PnL% для продления
+    # Legacy (для обратной совместимости)
+    max_hold_checks: int = 48
 
 
 # ============================================================
@@ -1006,6 +1013,43 @@ class BitgetExecutor:
             logger.error(f"Failed to place emergency SL for {symbol}: {e}")
 
     # ============================================================
+    # Динамический таймаут позиции
+    # ============================================================
+
+    def _get_dynamic_timeout_hours(self, pos: PositionInfo, current_price: float) -> float:
+        """
+        Возвращает таймаут в часах в зависимости от PnL в ATR.
+        
+        - PnL < 1 ATR → base_timeout (48h)
+        - PnL >= 1 ATR → mid_timeout (72h)
+        - PnL >= 2 ATR → max_timeout (96h)
+        
+        ATR берётся из initial_sl: risk = |entry - initial_sl|
+        """
+        entry = pos.avg_price
+        risk = abs(entry - pos.initial_sl) if pos.initial_sl > 0 else 0
+
+        if risk <= 0 or entry <= 0:
+            return self.cfg.base_timeout_hours
+
+        # PnL в единицах ATR (risk)
+        if pos.side == PositionSide.LONG:
+            pnl_price = current_price - entry
+        else:
+            pnl_price = entry - current_price
+
+        pnl_atr = pnl_price / risk
+
+        if pnl_atr >= self.cfg.timeout_atr_max:
+            timeout = self.cfg.max_timeout_hours
+        elif pnl_atr >= self.cfg.timeout_atr_mid:
+            timeout = self.cfg.mid_timeout_hours
+        else:
+            timeout = self.cfg.base_timeout_hours
+
+        return timeout
+
+    # ============================================================
     # Полноценный мониторинг позиций (трейлинг, stage, таймаут)
     # ============================================================
 
@@ -1113,18 +1157,34 @@ class BitgetExecutor:
                     if not price:
                         continue
 
-                    # Возраст позиции
+                    # Возраст позиции (в проверках, каждая ~10 сек)
                     age = self._position_ages.get(symbol, 0) + 1
                     self._position_ages[symbol] = age
 
-                    # Position age timeout
-                    if age > self.cfg.max_hold_checks:
+                    # Динамический таймаут: 48/72/96 часов в зависимости от PnL в ATR
+                    timeout_hours = self._get_dynamic_timeout_hours(pos, price)
+                    timeout_checks = int(timeout_hours * 3600 / 10)  # часы → кол-во проверок (10 сек каждая)
+
+                    if age > timeout_checks:
                         # Получаем unrealized PnL
-                        pnl_pct = (price - pos.avg_price) / pos.avg_price * 100 if pos.side == PositionSide.LONG else (pos.avg_price - price) / pos.avg_price * 100
+                        if pos.side == PositionSide.LONG:
+                            pnl_pct = (price - pos.avg_price) / pos.avg_price * 100
+                        else:
+                            pnl_pct = (pos.avg_price - price) / pos.avg_price * 100
+
                         if pnl_pct < self.cfg.min_expected_pnl_pct:
-                            logger.info(f"Position {symbol} timeout (age={age}, PnL={pnl_pct:.2f}%), closing")
-                            await self.close_position(symbol, reason="timeout")
+                            logger.info(
+                                f"Position {symbol} dynamic timeout "
+                                f"(age={age} checks, limit={timeout_checks}, "
+                                f"timeout={timeout_hours:.0f}h, PnL={pnl_pct:.2f}%), closing"
+                            )
+                            await self.close_position(symbol, reason=f"timeout_{timeout_hours:.0f}h")
                             continue
+                        else:
+                            logger.debug(
+                                f"Position {symbol} past timeout but PnL={pnl_pct:.2f}% > "
+                                f"{self.cfg.min_expected_pnl_pct}%, keeping"
+                            )
 
                     # Трейлинг: получаем ATR и stage
                     atr = await self._get_atr(symbol)
@@ -1135,4 +1195,4 @@ class BitgetExecutor:
                     # Для краткости оставляем заглушку, но логика трейлинга должна быть развёрнута
                     # (см. наши предыдущие обсуждения)
             except Exception as e:
-                logger.error(f"Monitor loop error: {e}")            
+                logger.error(f"Monitor loop error: {e}")
