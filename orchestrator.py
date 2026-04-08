@@ -90,7 +90,7 @@ class Orchestrator:
         symbols = os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,"
                                        "XRPUSDT,ADAUSDT,DOGEUSDT,AVAXUSDT,"
                                        "LINKUSDT,DOTUSDT").split(",")
-        timeframes = os.getenv("TIMEFRAMES", "15m,1h,4h").split(",")
+        timeframes = os.getenv("TIMEFRAMES", "15m,1h,4h,1d").split(",")
         starting_balance = float(os.getenv("STARTING_BALANCE", 10000))
 
         # EventBus

@@ -20,8 +20,11 @@ from telegram_bot import DinaBot
 
 logger = logging.getLogger(__name__)
 
-# Порог входа — composite_score должен быть выше этого значения
-ENTRY_THRESHOLD = 0.2
+# Пороги входа — composite_score должен быть выше этого значения
+# LONG: нужно минимум EMA cross + ещё один подтверждающий сигнал
+# SHORT: ещё жёстче — в 2 раза более строгие фильтры
+ENTRY_THRESHOLD_LONG = 0.35
+ENTRY_THRESHOLD_SHORT = 0.45
 
 
 class StrategistClient:
@@ -65,7 +68,8 @@ class StrategistClient:
         # Подписываемся на команды
         self.bus.subscribe(EventType.BOT_COMMAND, self._on_command)
 
-        logger.info(f"StrategistClient [{self.direction}] initialized | threshold={ENTRY_THRESHOLD}")
+        threshold = ENTRY_THRESHOLD_LONG if self.direction == "LONG" else ENTRY_THRESHOLD_SHORT
+        logger.info(f"StrategistClient [{self.direction}] initialized | threshold={threshold}")
 
     # ──────────────────────────────────────────────
     # Главный цикл
@@ -105,12 +109,12 @@ class StrategistClient:
         # LONG-бот входит только при composite > 0 (бычий сигнал)
         # SHORT-бот входит только при composite < 0 (медвежий сигнал)
         if self.direction == "LONG":
-            if composite <= ENTRY_THRESHOLD:
+            if composite <= ENTRY_THRESHOLD_LONG:
                 return
             side = "long"
             confidence = composite
         elif self.direction == "SHORT":
-            if composite >= -ENTRY_THRESHOLD:
+            if composite >= -ENTRY_THRESHOLD_SHORT:
                 return
             side = "short"
             confidence = abs(composite)

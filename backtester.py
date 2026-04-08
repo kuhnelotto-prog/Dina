@@ -307,7 +307,7 @@ class Backtester:
             "sweep": 0.7,
         }
 
-        ENTRY_THRESHOLD = 0.2  # composite_score > 0.2 → enter long
+        ENTRY_THRESHOLD = 0.35  # composite_score > 0.35 → enter long (synced with strategist_client)
 
         for i, (timestamp, row) in enumerate(df.iterrows()):
             if i % 50 == 0:
@@ -334,9 +334,18 @@ class Backtester:
                 if "error" in indicators:
                     continue
 
-                # Filter 1: Trend filter — no longs in downtrend
+                # Filter 1: Trend filter — no longs in downtrend (4H EMA)
                 if indicators["ema_fast"] < indicators["ema_slow"]:
                     continue
+
+                # Filter 1b: Global trend filter — EMA50 on daily
+                # Approximate daily by looking at every 6th candle (4H → 1D)
+                if i >= 120:  # need ~20 daily candles = 120 4H candles (EMA warms up fast)
+                    daily_closes = df.iloc[:i+1:6]['close']  # sample every 6th candle ≈ daily
+                    if len(daily_closes) >= 20:
+                        ema50_daily = daily_closes.ewm(span=50, adjust=False).mean().iloc[-1]
+                        if current_price < ema50_daily:
+                            continue  # below EMA50 daily → no longs
 
                 # Filter 2: RSI > 70 — overbought, skip entry
                 rsi = indicators.get("rsi", 50)

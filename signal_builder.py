@@ -32,11 +32,15 @@ class SignalBuilder:
         self._bus = bus
 
         # Веса таймфреймов (по умолчанию)
+        # 1d не участвует в composite — используется только как тренд-фильтр
         self.timeframe_weights = {
             "15m": 0.2,
             "1h":  0.3,
             "4h":  0.5,
         }
+
+        # EMA50 на 1D — глобальный тренд-фильтр
+        self._ema50_1d_window = 50
 
         # Кэш свечей по (symbol, timeframe)
         self._candle_cache: Dict[Tuple[str, str], pd.DataFrame] = {}
@@ -142,7 +146,12 @@ class SignalBuilder:
     async def _aggregate_timeframes(self, symbol: str, direction: str) -> Tuple[float, dict]:
         """
         Собирает сигналы со всех таймфреймов и возвращает взвешенный composite_score.
+        Перед расчётом проверяет глобальный тренд-фильтр EMA50 на 1D.
         """
+        # ── Глобальный тренд-фильтр: EMA50 на 1D ──
+        if not self._check_daily_trend(symbol, direction):
+            return 0.0, {}
+
         total_score = 0.0
         total_weight = 0.0
         signals_by_tf = {}
@@ -176,6 +185,43 @@ class SignalBuilder:
             return 0.0, {}
 
         return total_score / total_weight, signals_by_tf
+
+    def _check_daily_trend(self, symbol: str, direction: str) -> bool:
+        """
+        Глобальный тренд-фильтр: EMA50 на 1D таймфрейме.
+        
+        LONG: разрешён только если close_1D > EMA50_1D (бычий тренд)
+        SHORT: разрешён только если close_1D < EMA50_1D (медвежий тренд)
+        
+        Если данных 1D нет — пропускаем фильтр (разрешаем вход).
+        """
+        df_1d = self._candle_cache.get((symbol, "1d"))
+        if df_1d is None or len(df_1d) < self._ema50_1d_window:
+            # Нет данных 1D — не блокируем (graceful degradation)
+            logger.debug(f"No 1D data for {symbol}, skipping daily trend filter")
+            return True
+
+        close = df_1d["close"] if "close" in df_1d.columns else df_1d.iloc[:, 3]
+        ema50 = close.ewm(span=self._ema50_1d_window, adjust=False).mean()
+        
+        current_close = float(close.iloc[-1])
+        current_ema50 = float(ema50.iloc[-1])
+
+        if direction == "LONG" and current_close < current_ema50:
+            logger.info(
+                f"🚫 {symbol} LONG blocked by 1D trend filter: "
+                f"close={current_close:.2f} < EMA50={current_ema50:.2f}"
+            )
+            return False
+
+        if direction == "SHORT" and current_close > current_ema50:
+            logger.info(
+                f"🚫 {symbol} SHORT blocked by 1D trend filter: "
+                f"close={current_close:.2f} > EMA50={current_ema50:.2f}"
+            )
+            return False
+
+        return True
 
     def _calculate_signal_from_indicators(self, indicators: dict, direction: str) -> dict:
         """
