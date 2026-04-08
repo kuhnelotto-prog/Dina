@@ -145,10 +145,17 @@ class DataFeed:
                 try:
                     raw = await asyncio.wait_for(ws.recv(), timeout=30)
                 except asyncio.TimeoutError:
-                    await ws.ping()
+                    # Отправляем текстовый ping (Bitget формат)
+                    await ws.send("ping")
                     continue
 
                 raw_str = raw.decode() if isinstance(raw, bytes) else raw
+
+                # Bitget отправляет текстовый "ping" — отвечаем "pong"
+                if raw_str == "ping":
+                    await ws.send("pong")
+                    continue
+
                 await self._handle_message(raw_str)
         finally:
             await ws.close()
