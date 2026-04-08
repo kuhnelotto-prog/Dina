@@ -124,19 +124,31 @@ class DinaBot:
         self._stop_event = asyncio.Event()
         await self.setup()
         logger.info("DinaBot: starting polling...")
-        
-        # Запускаем polling напрямую - он сам управляет своим event loop
+
         try:
-            await self._app.run_polling(drop_pending_updates=True)
+            # Инициализируем приложение без запуска собственного event loop
+            await self._app.initialize()
+            await self._app.start()
+            # Запускаем polling через updater (не блокирует event loop)
+            await self._app.updater.start_polling(drop_pending_updates=True)
+            logger.info("DinaBot: polling started ✅")
+
+            # Ждём сигнала остановки
+            await self._stop_event.wait()
+
         except asyncio.CancelledError:
             logger.info("DinaBot: polling cancelled")
         except Exception as e:
             logger.error(f"DinaBot: polling error: {e}")
-            # Просто логируем ошибку, не пытаемся управлять event loop
-            # run_polling сам обрабатывает закрытие приложения
         finally:
-            # Не пытаемся управлять event loop - run_polling сам всё закроет
-            pass
+            try:
+                if self._app.updater.running:
+                    await self._app.updater.stop()
+                if self._app.running:
+                    await self._app.stop()
+                await self._app.shutdown()
+            except Exception as e:
+                logger.debug(f"DinaBot: cleanup error: {e}")
 
     def run_sync(self):
         """Синхронная версия run() для запуска в отдельном потоке."""

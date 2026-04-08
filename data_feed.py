@@ -2,6 +2,7 @@
 data_feed.py
 
 WebSocket-подписка на свечи Bitget USDT-FUTURES.
+Одно соединение — все подписки (до 240 каналов).
 Автоматический реконнект с экспоненциальным backoff.
 Обновляет кэш свечей в SignalBuilder.
 """
@@ -27,7 +28,11 @@ TF_MAP = {
     "1d":  "1D",
 }
 
+# Обратная карта для парсинга ответов
+TF_REVERSE = {v: k for k, v in TF_MAP.items()}
+
 CANDLE_LIMIT = 200
+
 
 class DataFeed:
     def __init__(
@@ -50,61 +55,92 @@ class DataFeed:
         self._risk_manager = risk_manager
         self._running = False
         self._candle_buf: Dict[tuple, list] = {}
+        self._ws = None
 
     async def start(self):
         self._running = True
-        tasks = [
-            asyncio.create_task(self._connect_loop(symbol, tf))
-            for symbol in self.symbols
-            for tf in self.timeframes
-        ]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        logger.info("DataFeed: запуск (%d символов × %d таймфреймов)", len(self.symbols), len(self.timeframes))
+        await self._connect_loop()
 
     async def stop(self):
         self._running = False
+        if self._ws:
+            try:
+                await self._ws.close()
+            except Exception:
+                pass
 
-    async def _connect_loop(self, symbol: str, tf: str):
+    async def _connect_loop(self):
+        """Одно соединение с авто-реконнектом."""
         backoff = 5
         while self._running:
             try:
-                await self._subscribe(symbol, tf)
-                backoff = 5
+                await self._run_single_connection()
+                backoff = 5  # сброс при успешном соединении
             except (ConnectionClosed, OSError) as exc:
                 logger.warning(
-                    "DataFeed: %s %s обрыв: %s. Реконнект через %ds",
-                    symbol, tf, exc, backoff,
+                    "DataFeed: обрыв соединения: %s. Реконнект через %ds",
+                    exc, backoff,
                 )
             except Exception as exc:
                 logger.error(
-                    "DataFeed: %s %s ошибка: %s. Реконнект через %ds",
-                    symbol, tf, exc, backoff,
+                    "DataFeed: ошибка: %s. Реконнект через %ds",
+                    exc, backoff,
                 )
             if self._running:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
 
-    async def _subscribe(self, symbol: str, tf: str):
-        bitget_tf = TF_MAP.get(tf, tf)
-        subscribe_msg = json.dumps({
-            "op": "subscribe",
-            "args": [{
-                "instType": "USDT-FUTURES",
-                "channel": f"candle{bitget_tf}",
-                "instId": symbol,
-            }]
-        })
+    async def _run_single_connection(self):
+        """Одно WebSocket соединение со всеми подписками."""
+        logger.warning("DataFeed: подключение к %s ...", WS_URL)
 
-        logger.info("DataFeed: подключение %s %s", symbol, tf)
+        ws = await asyncio.wait_for(
+            websockets.connect(
+                WS_URL,
+                ping_interval=20,
+                ping_timeout=10,
+                close_timeout=5,
+            ),
+            timeout=15,
+        )
+        try:
+            self._ws = ws
 
-        async with websockets.connect(
-            WS_URL,
-            ping_interval=20,
-            ping_timeout=10,
-            close_timeout=5,
-        ) as ws:
-            await ws.send(subscribe_msg)
-            logger.info("DataFeed: подписан на %s %s", symbol, tf)
+            # Подписываемся на все символы и таймфреймы
+            args = []
+            for symbol in self.symbols:
+                for tf in self.timeframes:
+                    bitget_tf = TF_MAP.get(tf, tf)
+                    args.append({
+                        "instType": "USDT-FUTURES",
+                        "channel": f"candle{bitget_tf}",
+                        "instId": symbol,
+                    })
 
+            # Bitget позволяет до 240 подписок за раз
+            # Отправляем батчами по 30 (на всякий случай)
+            batch_size = 30
+            for i in range(0, len(args), batch_size):
+                batch = args[i:i + batch_size]
+                subscribe_msg = json.dumps({"op": "subscribe", "args": batch})
+                await ws.send(subscribe_msg)
+                logger.info(
+                    "DataFeed: подписка отправлена (%d каналов, батч %d/%d)",
+                    len(batch), i // batch_size + 1,
+                    (len(args) + batch_size - 1) // batch_size,
+                )
+                # Небольшая пауза между батчами
+                if i + batch_size < len(args):
+                    await asyncio.sleep(0.5)
+
+            total = len(self.symbols) * len(self.timeframes)
+            logger.info(
+                "DataFeed: подписан на %d каналов (%d символов × %d таймфреймов) через 1 соединение",
+                total, len(self.symbols), len(self.timeframes),
+            )
+
+            # Читаем сообщения
             while self._running:
                 try:
                     raw = await asyncio.wait_for(ws.recv(), timeout=30)
@@ -112,21 +148,36 @@ class DataFeed:
                     await ws.ping()
                     continue
 
-                # raw может быть bytes или str
                 raw_str = raw.decode() if isinstance(raw, bytes) else raw
-                await self._handle_message(raw_str, symbol, tf)
+                await self._handle_message(raw_str)
+        finally:
+            await ws.close()
 
-    async def _handle_message(self, raw: str, symbol: str, tf: str):
+    async def _handle_message(self, raw: str):
         try:
             msg = json.loads(raw)
         except json.JSONDecodeError:
             return
 
+        # Подтверждение подписки
         if "event" in msg:
+            event = msg.get("event")
+            if event == "error":
+                logger.error("DataFeed: ошибка подписки: %s", msg)
             return
 
+        # Данные свечей
+        arg = msg.get("arg", {})
         data = msg.get("data")
-        if not data:
+        if not data or not arg:
+            return
+
+        symbol = arg.get("instId", "")
+        channel = arg.get("channel", "")
+
+        # Извлекаем таймфрейм из канала (candle15m → 15m, candle1H → 1h)
+        tf = self._parse_tf(channel)
+        if not tf:
             return
 
         key = (symbol, tf)
@@ -166,3 +217,15 @@ class DataFeed:
                 "DataFeed: обновлён кэш %s %s (%d свечей)",
                 symbol, tf, len(buf),
             )
+
+    @staticmethod
+    def _parse_tf(channel: str) -> str:
+        """candle15m → 15m, candle1H → 1h, candle4H → 4h"""
+        if not channel.startswith("candle"):
+            return ""
+        bitget_tf = channel[6:]  # убираем "candle"
+        # Проверяем обратную карту
+        if bitget_tf in TF_REVERSE:
+            return TF_REVERSE[bitget_tf]
+        # Если не нашли — возвращаем как есть (lowercase)
+        return bitget_tf.lower()

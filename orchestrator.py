@@ -170,7 +170,11 @@ class Orchestrator:
 
         if self.bot:
             startup_msg = "🚀 Дина запущена (dry‑run режим)" if self.executor.cfg.dry_run else "🚀 Дина запущена"
-            await self.bot._send(startup_msg, priority="info")
+            try:
+                await self.bot._send(startup_msg, priority="info")
+            except Exception as e:
+                logger.warning(f"Orchestrator: не удалось отправить startup сообщение в Telegram: {e}")
+                logger.info("Orchestrator: продолжаем без Telegram уведомления")
 
         # DataFeed — оба SignalBuilder получают данные + risk_manager получает 4H для корреляции
         self.data_feed = DataFeed(
@@ -293,9 +297,9 @@ class Orchestrator:
         ))
 
         # Telegram
-        if self.bot and hasattr(self.bot, "run_sync"):
+        if self.bot:
             self._tasks.append(asyncio.create_task(
-                self._run_telegram(),
+                self._run_with_restart(self.bot.run, "DinaBot"),
                 name="telegram-bot",
             ))
 

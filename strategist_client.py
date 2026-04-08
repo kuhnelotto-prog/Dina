@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 # Пороги входа — composite_score должен быть выше этого значения
 # LONG: нужно минимум EMA cross + ещё один подтверждающий сигнал
 # SHORT: ещё жёстче — в 2 раза более строгие фильтры
-ENTRY_THRESHOLD_LONG = 0.35
-ENTRY_THRESHOLD_SHORT = 0.45
+ENTRY_THRESHOLD_LONG = 0.30   # снижен с 0.35 → 0.30 (более чувствительный вход)
+ENTRY_THRESHOLD_SHORT = 0.40  # снижен с 0.45 → 0.40 (чуть мягче для шортов)
 
 # Funding rate: если |funding| > этого порога, повышаем threshold на FUNDING_PENALTY
 FUNDING_EXTREME_THRESHOLD = 0.0005  # 0.05% за 8 часов = ~0.15%/день
