@@ -460,6 +460,39 @@ class BitgetExecutor:
             logger.error(f"get_balance error: {e}")
             return 0.0
 
+    async def get_funding_rate(self, symbol: str) -> float:
+        """
+        Возвращает текущий funding rate для символа.
+        Положительный = лонги платят шортам, отрицательный = шорты платят лонгам.
+        Возвращает 0.0 при ошибке или в dry_run.
+        """
+        if self.cfg.dry_run:
+            return 0.0
+
+        try:
+            url = "https://api.bitget.com/api/v2/mix/market/current-fund-rate"
+            params = {
+                "symbol": symbol,
+                "productType": self.cfg.product_type,
+            }
+            resp = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: requests.get(url, params=params, timeout=10).json()
+            )
+            data = resp.get("data", [])
+            if data and isinstance(data, list) and len(data) > 0:
+                rate = float(data[0].get("fundingRate", 0))
+                logger.debug(f"Funding rate {symbol}: {rate:.6f}")
+                return rate
+            elif data and isinstance(data, dict):
+                rate = float(data.get("fundingRate", 0))
+                logger.debug(f"Funding rate {symbol}: {rate:.6f}")
+                return rate
+            return 0.0
+        except Exception as e:
+            logger.warning(f"get_funding_rate error for {symbol}: {e}")
+            return 0.0
+
     # ============================================================
     # Внутренние методы API
     # ============================================================

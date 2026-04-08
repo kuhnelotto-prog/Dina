@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 ENTRY_THRESHOLD_LONG = 0.35
 ENTRY_THRESHOLD_SHORT = 0.45
 
+# Funding rate: если |funding| > этого порога, повышаем threshold на FUNDING_PENALTY
+FUNDING_EXTREME_THRESHOLD = 0.0005  # 0.05% за 8 часов = ~0.15%/день
+FUNDING_PENALTY = 0.05              # +0.05 к порогу входа
+
 
 class StrategistClient:
     def __init__(
@@ -105,16 +109,31 @@ class StrategistClient:
 
         composite = signal.get("composite_score", 0.0)
 
+        # ── Funding rate коррекция порога ──
+        funding_penalty = 0.0
+        try:
+            funding_rate = await self.executor.get_funding_rate(symbol)
+            if abs(funding_rate) > FUNDING_EXTREME_THRESHOLD:
+                funding_penalty = FUNDING_PENALTY
+                logger.info(
+                    f"[{self.direction}] {symbol}: extreme funding={funding_rate:.6f}, "
+                    f"threshold +{FUNDING_PENALTY}"
+                )
+        except Exception as e:
+            logger.debug(f"[{self.direction}] {symbol}: funding rate unavailable: {e}")
+
         # ── Direction фильтр (жёсткий) ──
         # LONG-бот входит только при composite > 0 (бычий сигнал)
         # SHORT-бот входит только при composite < 0 (медвежий сигнал)
         if self.direction == "LONG":
-            if composite <= ENTRY_THRESHOLD_LONG:
+            threshold = ENTRY_THRESHOLD_LONG + funding_penalty
+            if composite <= threshold:
                 return
             side = "long"
             confidence = composite
         elif self.direction == "SHORT":
-            if composite >= -ENTRY_THRESHOLD_SHORT:
+            threshold = ENTRY_THRESHOLD_SHORT + funding_penalty
+            if composite >= -threshold:
                 return
             side = "short"
             confidence = abs(composite)
