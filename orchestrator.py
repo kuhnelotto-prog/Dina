@@ -198,10 +198,11 @@ class Orchestrator:
             direction="SHORT",
         )
 
-        # TrailingManager
+        # TrailingManager (с risk_manager для синхронизации partial close)
         self.trailing_manager = TrailingManager(
             executor=self.executor,
             bot=self.bot,
+            risk_manager=self.risk_manager,
         )
 
         # PositionMonitor

@@ -145,13 +145,19 @@ class PositionMonitor:
         # Вычисляем PnL
         # Берём последнюю известную markPrice как exit_price
         exit_price = old_pos.get("mark_price") or old_pos.get("markPrice") or entry_price
-        
-        if entry_price > 0 and size > 0:
+
+        # Используем актуальный размер из risk_manager (учитывает partial close)
+        # Если risk_manager не знает — fallback на оригинальный size
+        remaining_size_usd = self.risk_manager.get_position_size(symbol)
+        if remaining_size_usd <= 0:
+            remaining_size_usd = size * entry_price if entry_price > 0 else 0.0
+
+        if entry_price > 0 and remaining_size_usd > 0:
             if side.lower() == "long":
                 pnl_pct = (exit_price - entry_price) / entry_price * 100
             else:
                 pnl_pct = (entry_price - exit_price) / entry_price * 100
-            pnl_usd = size * entry_price * pnl_pct / 100
+            pnl_usd = remaining_size_usd * pnl_pct / 100
         else:
             pnl_pct = 0.0
             pnl_usd = 0.0

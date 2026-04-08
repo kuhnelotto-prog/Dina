@@ -22,10 +22,11 @@ class TrailingManager:
     Вызывается из PositionMonitor на каждом тике.
     """
 
-    def __init__(self, executor, bot=None):
+    def __init__(self, executor, bot=None, risk_manager=None):
         self.executor = executor
         self.bot = bot
-        # Состояние трейлинга: symbol -> {"current_sl": float, "trailing_step": int}
+        self.risk_manager = risk_manager
+        # Состояние трейлинга: symbol -> {"current_sl": float, "trailing_step": int, "remaining_pct": float}
         self._state: Dict[str, dict] = {}
 
     def register_position(self, symbol: str, initial_sl: float):
@@ -115,6 +116,9 @@ class TrailingManager:
                 await self.bot._send(f"💰 {symbol} закрыто 25% позиции\nСтоп: {new_sl:.4f}")
             event_logger.partial_close(symbol, pct=25, price=current_price, step=2)
             event_logger.trailing_stop_moved(symbol, current_sl, new_sl, step=2)
+            # Синхронизируем risk_manager: осталось 75% позиции
+            if self.risk_manager:
+                self.risk_manager.update_position_size(symbol, remaining_pct=0.75)
 
         # Шаг 3 — закрыть ещё 25%, стоп на +1.0R
         elif step < 3 and r >= 1.5:
@@ -133,6 +137,9 @@ class TrailingManager:
                 await self.bot._send(f"💰 {symbol} закрыто ещё 25% позиции\nСтоп: {new_sl:.4f}")
             event_logger.partial_close(symbol, pct=25, price=current_price, step=3)
             event_logger.trailing_stop_moved(symbol, current_sl, new_sl, step=3)
+            # Синхронизируем risk_manager: осталось 50% позиции (75% * 2/3 ≈ 50% от оригинала)
+            if self.risk_manager:
+                self.risk_manager.update_position_size(symbol, remaining_pct=2/3)
 
         # Шаг 4 — закрыть всё (+2.5R)
         elif step < 4 and r >= 2.5:

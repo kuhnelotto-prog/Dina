@@ -166,6 +166,27 @@ class RiskManager:
         }
         self._open_count += 1
 
+    def update_position_size(self, symbol: str, remaining_pct: float):
+        """
+        Обновляет размер позиции после partial close.
+        remaining_pct: доля оставшейся позиции (0.75 после 25% close, 0.50 после 50%).
+        """
+        pos = self._open_positions.get(symbol)
+        if pos is None:
+            logger.warning(f"RiskManager: update_position_size — {symbol} not found")
+            return
+        old_size = pos["size_usd"]
+        pos["size_usd"] = old_size * remaining_pct
+        logger.info(
+            f"RiskManager: {symbol} size updated: ${old_size:.0f} → ${pos['size_usd']:.0f} "
+            f"(remaining {remaining_pct*100:.0f}%)"
+        )
+
+    def get_position_size(self, symbol: str) -> float:
+        """Возвращает текущий размер позиции (с учётом partial close)."""
+        pos = self._open_positions.get(symbol)
+        return pos["size_usd"] if pos else 0.0
+
     def on_trade_closed(self, pnl_usd: float, symbol: Optional[str] = None):
         self._daily_pnl += pnl_usd
         self._open_count = max(0, self._open_count - 1)
