@@ -334,36 +334,22 @@ class Backtester:
                 if "error" in indicators:
                     continue
 
-                # Filter 1: Trend filter — no longs in downtrend (4H EMA)
-                if indicators["ema_fast"] < indicators["ema_slow"]:
-                    continue
-
-                # Filter 1b: Global trend filter — EMA50 on daily
-                # Approximate daily by looking at every 6th candle (4H → 1D)
-                if i >= 120:  # need ~20 daily candles = 120 4H candles (EMA warms up fast)
-                    daily_closes = df.iloc[:i+1:6]['close']  # sample every 6th candle ≈ daily
-                    if len(daily_closes) >= 20:
-                        ema50_daily = daily_closes.ewm(span=50, adjust=False).mean().iloc[-1]
-                        if current_price < ema50_daily:
-                            continue  # below EMA50 daily → no longs
-
-                # Filter 2: RSI > 70 — overbought, skip entry
-                rsi = indicators.get("rsi", 50)
-                if rsi > 70:
-                    continue
-
-                # Calculate composite score
+                # Calculate composite score (STATE + EVENT)
                 composite = self._compute_composite(indicators, weights)
 
-                if composite > ENTRY_THRESHOLD:
-                    # ATR-based SL/TP (fallback to fixed if ATR unavailable)
+                # Determine direction based on composite score
+                is_bullish = indicators["ema_fast"] > indicators["ema_slow"]
+                rsi = indicators.get("rsi", 50)
+
+                # ── LONG entry ──
+                if composite > ENTRY_THRESHOLD and is_bullish and rsi < 70:
                     atr_pct = indicators.get("atr_pct", 0)
-                    if atr_pct > 0.1:  # ATR valid (> 0.1%)
-                        sl_pct = 1.5 * atr_pct / 100   # 1.5 × ATR
-                        tp_pct = 3.0 * atr_pct / 100   # 3.0 × ATR
+                    if atr_pct > 0.1:
+                        sl_pct = 1.5 * atr_pct / 100
+                        tp_pct = 3.0 * atr_pct / 100
                     else:
-                        sl_pct = 0.03   # fallback 3%
-                        tp_pct = 0.05   # fallback 5%
+                        sl_pct = 0.03
+                        tp_pct = 0.05
                     sl_price = current_price * (1 - sl_pct)
                     tp_price = current_price * (1 + tp_pct)
                     position_size = result.final_balance * 0.1
@@ -377,9 +363,33 @@ class Backtester:
                         tp_price=tp_price,
                         timestamp=timestamp
                     )
-
                     open_positions[symbol] = position
-                    logger.info(f"Opened position: {symbol} long | Price: {current_price:.2f} | Score: {composite:.3f}")
+                    logger.info(f"Opened LONG: {symbol} | Price: {current_price:.2f} | Score: {composite:.3f}")
+
+                # ── SHORT entry ──
+                elif composite < -ENTRY_THRESHOLD and not is_bullish and rsi > 30:
+                    atr_pct = indicators.get("atr_pct", 0)
+                    if atr_pct > 0.1:
+                        sl_pct = 1.5 * atr_pct / 100
+                        tp_pct = 3.0 * atr_pct / 100
+                    else:
+                        sl_pct = 0.03
+                        tp_pct = 0.05
+                    sl_price = current_price * (1 + sl_pct)
+                    tp_price = current_price * (1 - tp_pct)
+                    position_size = result.final_balance * 0.1
+
+                    position = BacktestPosition(
+                        symbol=symbol,
+                        side="short",
+                        entry_price=current_price,
+                        size_usd=position_size,
+                        sl_price=sl_price,
+                        tp_price=tp_price,
+                        timestamp=timestamp
+                    )
+                    open_positions[symbol] = position
+                    logger.info(f"Opened SHORT: {symbol} | Price: {current_price:.2f} | Score: {composite:.3f}")
 
         for sym, position in list(open_positions.items()):
             last_price = df.iloc[-1]['close']
@@ -392,23 +402,72 @@ class Backtester:
     def _compute_composite(indicators: dict, weights: dict) -> float:
         """
         Compute weighted composite score from indicators.
-        LONG direction. Volume spike = multiplier, RSI < 30 = bonus.
-        Normalization: score / max_possible.
+        
+        Архитектура v2 (STATE + EVENT):
+        - STATE слой (60%): ema_trend + rsi_zone + macd_hist + bb_position
+          Активны на КАЖДОЙ свече, дают базовый фон.
+        - EVENT слой (40%): ema_cross + engulfing + fvg + sweep
+          Редкие бонусы, усиливают сигнал при совпадении.
+        - Volume spike = множитель (не в score).
+        
         Returns score from -1 to 1.
         """
-        score = 0.0
+        # ── STATE слой (базовый фон, max = 4.0) ──
+        state_score = 0.0
+        state_max = 4.0  # 4 компонента по 1.0
 
-        # Max possible: exclude volume_spike (multiplier) and macd_cross (disabled)
-        max_possible = (
-            weights.get("ema_cross", 1.0) +
-            weights.get("engulfing", 0.8) +
-            weights.get("fvg", 0.6) +
-            weights.get("bb_squeeze", 0.3) +
-            weights.get("sweep", 0.7) +
-            weights.get("rsi_filter", 0.4)
-        )
+        # 1. EMA trend state (вес 1.0)
+        if indicators["ema_fast"] > indicators["ema_slow"]:
+            state_score += 1.0   # бычий тренд
+        elif indicators["ema_fast"] < indicators["ema_slow"]:
+            state_score -= 1.0   # медвежий тренд
 
-        # EMA cross (bullish: fast crossed above slow)
+        # 2. RSI zone (вес 1.0)
+        rsi = indicators.get("rsi", 50)
+        if rsi > 70:
+            state_score -= 1.0   # перекупленность → медвежий
+        elif rsi < 30:
+            state_score += 1.0   # перепроданность → бычий
+        elif rsi > 60:
+            state_score -= 0.4   # слабо медвежий
+        elif rsi < 40:
+            state_score += 0.4   # слабо бычий
+
+        # 3. MACD histogram (вес 1.0)
+        macd = indicators.get("macd", 0)
+        macd_signal = indicators.get("macd_signal", 0)
+        macd_hist = macd - macd_signal
+        if macd_hist < 0:
+            state_score -= 1.0   # медвежий
+        elif macd_hist > 0:
+            state_score += 1.0   # бычий
+
+        # 4. Bollinger position (вес 1.0)
+        price = indicators.get("price", 0)
+        bb_upper = indicators.get("bb_upper", 0)
+        bb_lower = indicators.get("bb_lower", 0)
+        bb_middle = indicators.get("bb_middle", 0)
+        if bb_upper > 0 and price > bb_upper:
+            state_score -= 1.0   # перекупленность → медвежий
+        elif bb_lower > 0 and price < bb_lower:
+            state_score += 1.0   # перепроданность → бычий
+        elif bb_middle > 0:
+            bb_width = (bb_upper - bb_lower) / bb_middle
+            if bb_width < 0.05:
+                state_score += 0.3  # BB squeeze → готовность к движению
+
+        # Нормализуем state: [-1, +1]
+        state_normalized = state_score / state_max if state_max > 0 else 0.0
+
+        # ── EVENT слой (бонусы) ──
+        event_score = 0.0
+        ema_cross_weight = weights.get("ema_cross", 1.0)
+        engulfing_weight = weights.get("engulfing", 0.8)
+        fvg_weight = weights.get("fvg", 0.6)
+        sweep_weight = weights.get("sweep", 0.7)
+        event_max = ema_cross_weight + engulfing_weight + fvg_weight + sweep_weight
+
+        # EMA cross (event)
         ema_cross_bull = (
             indicators["ema_fast"] > indicators["ema_slow"] and
             indicators.get("ema_fast_prev", 0) <= indicators.get("ema_slow_prev", 0)
@@ -417,51 +476,42 @@ class Backtester:
             indicators["ema_fast"] < indicators["ema_slow"] and
             indicators.get("ema_fast_prev", 0) >= indicators.get("ema_slow_prev", 0)
         )
-
         if ema_cross_bull:
-            score += weights["ema_cross"]
+            event_score += ema_cross_weight
         elif ema_cross_bear:
-            score -= weights["ema_cross"]
-
-        # RSI filter: < 30 → bullish bonus
-        rsi = indicators.get("rsi", 50)
-        if rsi < 30:
-            score += weights.get("rsi_filter", 0.4)
+            event_score -= ema_cross_weight
 
         # Engulfing
         if indicators.get("engulfing_bull", False):
-            score += weights["engulfing"]
+            event_score += engulfing_weight
         elif indicators.get("engulfing_bear", False):
-            score -= weights["engulfing"]
+            event_score -= engulfing_weight
 
         # FVG
         if indicators.get("fvg_bull", False):
-            score += weights["fvg"]
+            event_score += fvg_weight
         elif indicators.get("fvg_bear", False):
-            score -= weights["fvg"]
-
-        # Bollinger squeeze
-        bb_mid = indicators.get("bb_middle", 0)
-        if bb_mid > 0:
-            bb_width = (indicators["bb_upper"] - indicators["bb_lower"]) / bb_mid
-            if bb_width < 0.05:
-                score += weights["bb_squeeze"]
+            event_score -= fvg_weight
 
         # Sweep
         if indicators.get("sweep_bull", False):
-            score += weights["sweep"]
+            event_score += sweep_weight
         elif indicators.get("sweep_bear", False):
-            score -= weights["sweep"]
+            event_score -= sweep_weight
 
-        # Normalize
-        if max_possible > 0:
-            score = score / max_possible
+        # Нормализуем event: [-1, +1]
+        event_normalized = event_score / event_max if event_max > 0 else 0.0
 
-        # Volume spike as multiplier (not in score itself)
+        # ── Итоговый composite: 60% state + 40% event ──
+        composite = 0.60 * state_normalized + 0.40 * event_normalized
+
+        # Volume spike как множитель
+        volume_spike_multiplier = weights.get("volume_spike", 1.2)
         if indicators.get("volume_ratio", 1.0) > 1.2:
-            score *= 1.2
+            composite *= volume_spike_multiplier
 
-        return score
+        # Clamp to [-1, +1]
+        return max(-1.0, min(1.0, composite))
 
 
 async def run_backtest(use_real_data=False):

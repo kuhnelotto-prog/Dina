@@ -371,33 +371,39 @@ class SignalBuilder:
         # Нормализуем state: [-1, +1]
         state_normalized = state_score / state_max if state_max > 0 else 0.0
 
-        # ── EVENT слой (бонусы, max = 1.0) ──
+        # ── EVENT слой (бонусы) ──
         event_score = 0.0
-        event_max = 3.2  # ema_cross(1.0) + engulfing(0.8) + fvg(0.6) + sweep(0.7) ≈ 3.1
+        # Используем веса из словаря weights
+        ema_cross_weight = weights.get("ema_cross", 1.0)
+        engulfing_weight = weights.get("engulfing", 0.8)
+        fvg_weight = weights.get("fvg", 0.6)
+        sweep_weight = weights.get("sweep", 0.7)
+        
+        event_max = ema_cross_weight + engulfing_weight + fvg_weight + sweep_weight
 
         # EMA cross (event)
         if signals.get("ema_cross_bull"):
-            event_score += 1.0 * d
+            event_score += ema_cross_weight * d
         elif signals.get("ema_cross_bear"):
-            event_score += 1.0 * -d
+            event_score += ema_cross_weight * -d
 
         # Engulfing
         if signals.get("engulfing_bull"):
-            event_score += 0.8 * d
+            event_score += engulfing_weight * d
         elif signals.get("engulfing_bear"):
-            event_score += 0.8 * -d
+            event_score += engulfing_weight * -d
 
         # FVG
         if signals.get("fvg_bull"):
-            event_score += 0.6 * d
+            event_score += fvg_weight * d
         elif signals.get("fvg_bear"):
-            event_score += 0.6 * -d
+            event_score += fvg_weight * -d
 
         # Sweep
         if signals.get("sweep_bull"):
-            event_score += 0.7 * d
+            event_score += sweep_weight * d
         elif signals.get("sweep_bear"):
-            event_score += 0.7 * -d
+            event_score += sweep_weight * -d
 
         # Нормализуем event: [-1, +1]
         event_normalized = event_score / event_max if event_max > 0 else 0.0
@@ -406,8 +412,9 @@ class SignalBuilder:
         composite = 0.60 * state_normalized + 0.40 * event_normalized
 
         # Volume spike как множитель
+        volume_spike_multiplier = weights.get("volume_spike", 1.2)
         if signals.get("volume_spike", False):
-            composite *= 1.2
+            composite *= volume_spike_multiplier
 
         # Clamp to [-1, +1]
         return max(-1.0, min(1.0, composite))
