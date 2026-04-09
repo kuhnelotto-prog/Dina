@@ -230,14 +230,21 @@ class SignalBuilder:
 
     def _calculate_signal_from_indicators(self, indicators: dict, direction: str) -> dict:
         """
-        Преобразует набор индикаторов в словарь булевых сигналов.
+        Преобразует набор индикаторов в словарь сигналов.
+        
+        Архитектура v2: STATE-based + EVENT-based сигналы.
+        - STATE сигналы (ema_trend, rsi_zone, macd_histogram, bb_position)
+          дают базовый фон — активны на каждой свече.
+        - EVENT сигналы (ema_cross, engulfing, fvg, sweep)
+          дают бонус при совпадении — редкие, но сильные.
         """
-        # Определяем направление для взвешивания
-        # Для LONG-бота бычьи сигналы дают +1, медвежьи -1
-        # Для SHORT-бота наоборот
-        mult = 1 if direction == "LONG" else -1
-
-        # EMA cross
+        # ── STATE сигналы (активны постоянно) ──
+        
+        # EMA trend state: fast vs slow
+        ema_bullish = indicators["ema_fast"] > indicators["ema_slow"]
+        ema_bearish = indicators["ema_fast"] < indicators["ema_slow"]
+        
+        # EMA cross (event — бонус)
         ema_cross_bull = (indicators["ema_fast"] > indicators["ema_slow"]) and (
             indicators.get("ema_fast_prev", 0) <= indicators.get("ema_slow_prev", 0)
         )
@@ -245,45 +252,68 @@ class SignalBuilder:
             indicators.get("ema_fast_prev", 0) >= indicators.get("ema_slow_prev", 0)
         )
 
+        # RSI zone (state)
+        rsi = indicators.get("rsi", 50)
+        # Для SHORT: RSI > 70 = перекупленность (хорошо для шорта)
+        # Для LONG: RSI < 30 = перепроданность (хорошо для лонга)
+        rsi_overbought = rsi > 70
+        rsi_oversold = rsi < 30
+        # Мягкие зоны
+        rsi_high = rsi > 60  # умеренно перекуплен
+        rsi_low = rsi < 40   # умеренно перепродан
+
+        # MACD histogram state
+        macd = indicators.get("macd", 0)
+        macd_signal = indicators.get("macd_signal", 0)
+        macd_hist = macd - macd_signal
+        macd_bullish = macd_hist > 0
+        macd_bearish = macd_hist < 0
+
+        # Bollinger position (state)
+        price = indicators.get("price", 0)
+        bb_upper = indicators.get("bb_upper", 0)
+        bb_lower = indicators.get("bb_lower", 0)
+        bb_middle = indicators.get("bb_middle", 0)
+        # Цена выше верхней BB = перекупленность
+        bb_above_upper = price > bb_upper if bb_upper > 0 else False
+        # Цена ниже нижней BB = перепроданность
+        bb_below_lower = price < bb_lower if bb_lower > 0 else False
+        # BB squeeze (state)
+        bb_squeeze = (bb_upper - bb_lower) / bb_middle < 0.05 if bb_middle > 0 else False
+
         # Volume spike
         volume_spike = indicators.get("volume_ratio", 1.0) > 1.2
 
-        # Engulfing
+        # ── EVENT сигналы (бонусы) ──
         engulfing_bull = indicators.get("engulfing_bull", False)
         engulfing_bear = indicators.get("engulfing_bear", False)
-
-        # FVG
         fvg_bull = indicators.get("fvg_bull", False)
         fvg_bear = indicators.get("fvg_bear", False)
-
-        # MACD cross
-        macd_cross = False
-        if "macd" in indicators and "macd_signal" in indicators:
-            # Временно отключаем MACD cross для избежания ложных сигналов
-            macd_cross = False
-
-        # Bollinger squeeze
-        bb_squeeze = (indicators["bb_upper"] - indicators["bb_lower"]) / indicators["bb_middle"] < 0.05 if indicators["bb_middle"] > 0 else False
-
-        # RSI filter (значение)
-        rsi = indicators.get("rsi", 50)
-
-        # Sweep
         sweep_bull = indicators.get("sweep_bull", False)
         sweep_bear = indicators.get("sweep_bear", False)
 
-        # Результирующие сигналы (с учётом направления)
         signals = {
+            # States
+            "ema_bullish": ema_bullish,
+            "ema_bearish": ema_bearish,
+            "rsi": rsi,
+            "rsi_overbought": rsi_overbought,
+            "rsi_oversold": rsi_oversold,
+            "rsi_high": rsi_high,
+            "rsi_low": rsi_low,
+            "macd_bullish": macd_bullish,
+            "macd_bearish": macd_bearish,
+            "bb_above_upper": bb_above_upper,
+            "bb_below_lower": bb_below_lower,
+            "bb_squeeze": bb_squeeze,
+            "volume_spike": volume_spike,
+            # Events (бонусы)
             "ema_cross_bull": ema_cross_bull,
             "ema_cross_bear": ema_cross_bear,
-            "volume_spike": volume_spike,
             "engulfing_bull": engulfing_bull,
             "engulfing_bear": engulfing_bear,
             "fvg_bull": fvg_bull,
             "fvg_bear": fvg_bear,
-            "macd_cross": macd_cross,
-            "bb_squeeze": bb_squeeze,
-            "rsi": rsi,
             "sweep_bull": sweep_bull,
             "sweep_bear": sweep_bear,
         }
@@ -292,64 +322,95 @@ class SignalBuilder:
     def _calculate_composite(self, signals: dict, weights: dict) -> float:
         """
         Считает взвешенный композитный сигнал от -1 до 1.
-        Volume spike = множитель (×1.2), RSI < 30 = бонус.
-        Нормализация: score / max_possible.
+        
+        Архитектура v2:
+        - STATE слой (60% веса): ema_trend + rsi_zone + macd_hist + bb_position
+          Активны на КАЖДОЙ свече, дают базовый фон.
+        - EVENT слой (40% веса): ema_cross + engulfing + fvg + sweep
+          Редкие бонусы, усиливают сигнал при совпадении.
+        - Volume spike = множитель x1.2 (не в score).
         """
-        score = 0.0
+        # Направление: LONG=+1, SHORT=-1
+        d = 1 if self._direction == "LONG" else -1
 
-        # Максимально возможная сумма (без volume_spike и macd_cross — оба отключены)
-        max_possible = (
-            weights.get("ema_cross", 1.0) +
-            weights.get("engulfing", 0.8) +
-            weights.get("fvg", 0.6) +
-            weights.get("bb_squeeze", 0.3) +
-            weights.get("sweep", 0.7) +
-            weights.get("rsi_filter", 0.4)
-        )
+        # ── STATE слой (базовый фон, max = 1.0) ──
+        state_score = 0.0
+        state_max = 4.0  # 4 компонента по 1.0
 
-        # Направление: для LONG-бота +1 для бычьих, -1 для медвежьих; для SHORT наоборот
-        direction_mult = 1 if self._direction == "LONG" else -1
+        # 1. EMA trend state (вес 1.0)
+        if signals.get("ema_bullish"):
+            state_score += 1.0 * d
+        elif signals.get("ema_bearish"):
+            state_score += 1.0 * -d
 
-        if signals["ema_cross_bull"]:
-            score += weights.get("ema_cross", 1.0) * direction_mult
-        elif signals["ema_cross_bear"]:
-            score += weights.get("ema_cross", 1.0) * -direction_mult
-
-        # RSI filter: < 30 → бычий бонус
+        # 2. RSI zone (вес 1.0)
         rsi = signals.get("rsi", 50)
-        if rsi < 30:
-            score += weights.get("rsi_filter", 0.4) * direction_mult
+        if signals.get("rsi_overbought"):       # RSI > 70
+            state_score += 1.0 * -d             # медвежий сигнал
+        elif signals.get("rsi_oversold"):        # RSI < 30
+            state_score += 1.0 * d              # бычий сигнал
+        elif signals.get("rsi_high"):            # RSI > 60
+            state_score += 0.4 * -d             # слабо медвежий
+        elif signals.get("rsi_low"):             # RSI < 40
+            state_score += 0.4 * d              # слабо бычий
 
-        if signals["engulfing_bull"]:
-            score += weights.get("engulfing", 0.8) * direction_mult
-        elif signals["engulfing_bear"]:
-            score += weights.get("engulfing", 0.8) * -direction_mult
+        # 3. MACD histogram (вес 1.0)
+        if signals.get("macd_bearish"):
+            state_score += 1.0 * -d
+        elif signals.get("macd_bullish"):
+            state_score += 1.0 * d
 
-        if signals["fvg_bull"]:
-            score += weights.get("fvg", 0.6) * direction_mult
-        elif signals["fvg_bear"]:
-            score += weights.get("fvg", 0.6) * -direction_mult
+        # 4. Bollinger position (вес 1.0)
+        if signals.get("bb_above_upper"):
+            state_score += 1.0 * -d             # перекупленность → медвежий
+        elif signals.get("bb_below_lower"):
+            state_score += 1.0 * d              # перепроданность → бычий
+        elif signals.get("bb_squeeze"):
+            state_score += 0.3                  # нейтральный бонус (готовность к движению)
 
-        if signals["macd_cross"]:
-            score += weights.get("macd_cross", 0.5) * direction_mult
+        # Нормализуем state: [-1, +1]
+        state_normalized = state_score / state_max if state_max > 0 else 0.0
 
-        if signals["bb_squeeze"]:
-            score += weights.get("bb_squeeze", 0.3)
+        # ── EVENT слой (бонусы, max = 1.0) ──
+        event_score = 0.0
+        event_max = 3.2  # ema_cross(1.0) + engulfing(0.8) + fvg(0.6) + sweep(0.7) ≈ 3.1
 
-        if signals["sweep_bull"]:
-            score += weights.get("sweep", 0.7) * direction_mult
-        elif signals["sweep_bear"]:
-            score += weights.get("sweep", 0.7) * -direction_mult
+        # EMA cross (event)
+        if signals.get("ema_cross_bull"):
+            event_score += 1.0 * d
+        elif signals.get("ema_cross_bear"):
+            event_score += 1.0 * -d
 
-        # Нормализация
-        if max_possible > 0:
-            score = score / max_possible
+        # Engulfing
+        if signals.get("engulfing_bull"):
+            event_score += 0.8 * d
+        elif signals.get("engulfing_bear"):
+            event_score += 0.8 * -d
 
-        # Volume spike как множитель (не в score)
+        # FVG
+        if signals.get("fvg_bull"):
+            event_score += 0.6 * d
+        elif signals.get("fvg_bear"):
+            event_score += 0.6 * -d
+
+        # Sweep
+        if signals.get("sweep_bull"):
+            event_score += 0.7 * d
+        elif signals.get("sweep_bear"):
+            event_score += 0.7 * -d
+
+        # Нормализуем event: [-1, +1]
+        event_normalized = event_score / event_max if event_max > 0 else 0.0
+
+        # ── Итоговый composite: 60% state + 40% event ──
+        composite = 0.60 * state_normalized + 0.40 * event_normalized
+
+        # Volume spike как множитель
         if signals.get("volume_spike", False):
-            score *= 1.2
+            composite *= 1.2
 
-        return score
+        # Clamp to [-1, +1]
+        return max(-1.0, min(1.0, composite))
 
     def detect_regime(self, symbol: str) -> str:
         """
