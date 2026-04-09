@@ -42,6 +42,11 @@ class SignalBuilder:
         # EMA50 на 1D — глобальный тренд-фильтр
         self._ema50_1d_window = 50
 
+        # Режимный фильтр: EMA20 vs EMA50 на 4H
+        self._regime_ema_fast = 20
+        self._regime_ema_slow = 50
+        self._regime_threshold_pct = 0.5  # разница < 0.5% = SIDEWAYS
+
         # Кэш свечей по (symbol, timeframe)
         self._candle_cache: Dict[Tuple[str, str], pd.DataFrame] = {}
 
@@ -345,6 +350,35 @@ class SignalBuilder:
             score *= 1.2
 
         return score
+
+    def detect_regime(self, symbol: str) -> str:
+        """
+        Определяет рыночный режим по EMA20 vs EMA50 на 4H.
+        
+        Returns: "BULL", "BEAR", или "SIDEWAYS"
+        """
+        df_4h = self._candle_cache.get((symbol, "4h"))
+        if df_4h is None or len(df_4h) < self._regime_ema_slow:
+            return "SIDEWAYS"  # недостаточно данных — нейтральный режим
+
+        close = df_4h["close"] if "close" in df_4h.columns else df_4h.iloc[:, 3]
+        ema_fast = close.ewm(span=self._regime_ema_fast, adjust=False).mean()
+        ema_slow = close.ewm(span=self._regime_ema_slow, adjust=False).mean()
+
+        current_fast = float(ema_fast.iloc[-1])
+        current_slow = float(ema_slow.iloc[-1])
+
+        if current_slow == 0:
+            return "SIDEWAYS"
+
+        diff_pct = (current_fast - current_slow) / current_slow * 100
+
+        if diff_pct > self._regime_threshold_pct:
+            return "BULL"
+        elif diff_pct < -self._regime_threshold_pct:
+            return "BEAR"
+        else:
+            return "SIDEWAYS"
 
     def get_signal_summary(self, symbol: str) -> dict:
         if symbol not in self._last_signals:

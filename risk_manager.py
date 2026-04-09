@@ -70,11 +70,11 @@ class RiskManager:
         # (symbol, "4h") -> pd.DataFrame с колонкой "close"
         self._candle_cache: Dict[str, pd.DataFrame] = {}
 
-        # Секторные группы
+        # Секторные группы (единый источник правды для всех проверок)
         self.SECTOR_GROUPS = {
-            "L1": ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "DOTUSDT"],
-            "DeFi": ["LINKUSDT", "AAVEUSDT", "UNIUSDT"],
-            "Meme": ["DOGEUSDT", "SHIBUSDT", "PEPEUSDT"],
+            "L1": ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT"],
+            "DeFi": ["LINKUSDT", "UNIUSDT"],
+            "Meme": ["DOGEUSDT"],
             "Alt_L1": ["BNBUSDT", "ADAUSDT", "XRPUSDT"],
         }
 
@@ -358,37 +358,17 @@ class RiskManager:
 
     def _check_correlation(self, symbol: str, direction: str) -> bool:
         """
-        Группы корреляции: L1, DeFi, Meme. Если уже есть позиция в той же группе,
-        то новый вход блокируется, чтобы не перегружать один сектор.
-        Для BTC отдельная группа, но если BTC уже открыт, то остальные монеты
-        считаются частично коррелированными (можно разрешить, но с уменьшением веса –
-        здесь пока просто запрещаем для простоты, можно доработать).
+        Группы корреляции: используем self.SECTOR_GROUPS (единый источник).
+        Если уже есть позиция в той же группе — блокируем вход.
         """
-        groups = {
-            "L1": ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "MATICUSDT"],
-            "DeFi": ["AAVEUSDT", "UNIUSDT", "LINKUSDT"],
-            "Meme": ["DOGEUSDT", "SHIBUSDT", "PEPEUSDT"],
-        }
-        symbol_group = None
-        for group, symbols in groups.items():
-            if symbol in symbols:
-                symbol_group = group
-                break
+        symbol_group = self._get_symbol_sector(symbol)
 
         if not symbol_group:
-            # Неизвестная монета — разрешаем, но можно ограничить
             return True
 
-        # Проверяем, есть ли уже позиция в этой группе
         for pos in self._open_positions.values():
-            pos_symbol = pos["symbol"]
-            pos_group = None
-            for g, syms in groups.items():
-                if pos_symbol in syms:
-                    pos_group = g
-                    break
+            pos_group = self._get_symbol_sector(pos["symbol"])
             if pos_group == symbol_group:
-                # Уже есть позиция в этой группе
                 return False
         return True
 

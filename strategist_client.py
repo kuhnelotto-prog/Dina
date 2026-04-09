@@ -21,10 +21,13 @@ from telegram_bot import DinaBot
 logger = logging.getLogger(__name__)
 
 # Пороги входа — composite_score должен быть выше этого значения
-# LONG: нужно минимум EMA cross + ещё один подтверждающий сигнал
-# SHORT: ещё жёстче — в 2 раза более строгие фильтры
-ENTRY_THRESHOLD_LONG = 0.30   # снижен с 0.35 → 0.30 (более чувствительный вход)
-ENTRY_THRESHOLD_SHORT = 0.40  # снижен с 0.45 → 0.40 (чуть мягче для шортов)
+# Динамические пороги зависят от рыночного режима (EMA20 vs EMA50 на 4H)
+ENTRY_THRESHOLD_LONG = 0.30
+
+# SHORT пороги по режиму:
+ENTRY_THRESHOLD_SHORT_BEAR = 0.30     # bear → агрессивнее
+ENTRY_THRESHOLD_SHORT_SIDEWAYS = 0.40 # sideways → стандарт
+ENTRY_THRESHOLD_SHORT_BULL = 0.50     # bull → консервативнее
 
 # Funding rate: если |funding| > этого порога, повышаем threshold на FUNDING_PENALTY
 FUNDING_EXTREME_THRESHOLD = 0.0005  # 0.05% за 8 часов = ~0.15%/день
@@ -72,7 +75,7 @@ class StrategistClient:
         # Подписываемся на команды
         self.bus.subscribe(EventType.BOT_COMMAND, self._on_command)
 
-        threshold = ENTRY_THRESHOLD_LONG if self.direction == "LONG" else ENTRY_THRESHOLD_SHORT
+        threshold = ENTRY_THRESHOLD_LONG if self.direction == "LONG" else ENTRY_THRESHOLD_SHORT_SIDEWAYS
         logger.info(f"StrategistClient [{self.direction}] initialized | threshold={threshold}")
 
     # ──────────────────────────────────────────────
@@ -122,9 +125,10 @@ class StrategistClient:
         except Exception as e:
             logger.debug(f"[{self.direction}] {symbol}: funding rate unavailable: {e}")
 
-        # ── Direction фильтр (жёсткий) ──
-        # LONG-бот входит только при composite > 0 (бычий сигнал)
-        # SHORT-бот входит только при composite < 0 (медвежий сигнал)
+        # ── Direction фильтр ──
+        # LONG-бот входит только при composite > threshold (бычий сигнал)
+        # SHORT-бот входит только при composite < -threshold (медвежий сигнал)
+        # SHORT порог — динамический, зависит от режима рынка (EMA20 vs EMA50 на 4H)
         if self.direction == "LONG":
             threshold = ENTRY_THRESHOLD_LONG + funding_penalty
             if composite <= threshold:
@@ -132,11 +136,23 @@ class StrategistClient:
             side = "long"
             confidence = composite
         elif self.direction == "SHORT":
-            threshold = ENTRY_THRESHOLD_SHORT + funding_penalty
+            # Динамический порог по режиму
+            regime = self.signal_builder.detect_regime(symbol)
+            if regime == "BEAR":
+                base_threshold = ENTRY_THRESHOLD_SHORT_BEAR
+            elif regime == "BULL":
+                base_threshold = ENTRY_THRESHOLD_SHORT_BULL
+            else:
+                base_threshold = ENTRY_THRESHOLD_SHORT_SIDEWAYS
+            threshold = base_threshold + funding_penalty
             if composite >= -threshold:
                 return
             side = "short"
             confidence = abs(composite)
+            logger.info(
+                f"[SHORT] {symbol}: regime={regime} threshold={threshold:.2f} "
+                f"composite={composite:.3f}"
+            )
         else:
             return
 
