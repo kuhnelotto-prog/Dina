@@ -34,33 +34,104 @@ class BacktestPosition:
         self.size_usd = size_usd
         self.sl_price = sl_price
         self.tp_price = tp_price
+        self.initial_sl = sl_price      # original SL for RR calculation
+        self.initial_tp = tp_price      # original TP
         self.entry_time = timestamp
         self.exit_time = None
         self.exit_price = None
         self.pnl_usd = 0.0
         self.pnl_pct = 0.0
         self.is_closed = False
+        # Trailing state
+        self.best_price = entry_price   # best favorable price seen
+        self.initial_risk = abs(entry_price - sl_price)  # 1R in price units
+        self.trailing_activated = False  # True once price moved >= 1R in our favor
 
-    def update(self, current_price):
+    def update(self, current_price, high=None, low=None):
+        """
+        Update position with candle data.
+        1. Check SL/TP by high/low (intra-candle)
+        2. If not closed, apply trailing stop logic using close price
+        """
         if self.is_closed:
             return False, None
 
+        candle_high = high if high is not None else current_price
+        candle_low = low if low is not None else current_price
+
+        # ── Step 1: Check SL/TP hit by high/low ──
         if self.side == "long":
-            if current_price <= self.sl_price:
-                self._close(current_price, "SL")
-                return True, current_price
-            if self.tp_price and current_price >= self.tp_price:
-                self._close(current_price, "TP")
-                return True, current_price
-        else:
-            if current_price >= self.sl_price:
-                self._close(current_price, "SL")
-                return True, current_price
-            if self.tp_price and current_price <= self.tp_price:
-                self._close(current_price, "TP")
-                return True, current_price
+            if candle_low <= self.sl_price:
+                self._close(self.sl_price, "TSL" if self.trailing_activated else "SL")
+                return True, self.sl_price
+            if self.tp_price and candle_high >= self.tp_price:
+                self._close(self.tp_price, "TP")
+                return True, self.tp_price
+        else:  # short
+            if candle_high >= self.sl_price:
+                self._close(self.sl_price, "TSL" if self.trailing_activated else "SL")
+                return True, self.sl_price
+            if self.tp_price and candle_low <= self.tp_price:
+                self._close(self.tp_price, "TP")
+                return True, self.tp_price
+
+        # ── Step 2: Trailing stop/profit logic (using close) ──
+        self._apply_trailing(current_price, candle_high, candle_low)
 
         return False, None
+
+    def _apply_trailing(self, close, high, low):
+        """
+        Trailing logic (same ATR-based params as live bot):
+        - Track best_price (highest close for LONG, lowest close for SHORT)
+        - At +1.0R: move SL to breakeven (entry price)
+        - At +1.5R: move SL to entry + 0.5R (lock 0.5R profit)
+        - Continuous: SL trails at best_price - 1.0R (LONG) / best_price + 1.0R (SHORT)
+        - TP trails: best_price + 1.0R (LONG) / best_price - 1.0R (SHORT)
+        """
+        R = self.initial_risk
+        if R <= 0:
+            return
+
+        if self.side == "long":
+            # Update best price
+            if close > self.best_price:
+                self.best_price = close
+
+            favorable_move = self.best_price - self.entry_price
+
+            if favorable_move >= 1.0 * R:
+                self.trailing_activated = True
+                # Trailing SL: best_price - 1.0R, but never below entry (breakeven)
+                new_sl = self.best_price - 1.0 * R
+                new_sl = max(new_sl, self.entry_price)  # at least breakeven
+                if new_sl > self.sl_price:
+                    self.sl_price = new_sl
+
+                # Trailing TP: best_price + 1.0R
+                new_tp = self.best_price + 1.0 * R
+                if new_tp > self.tp_price:
+                    self.tp_price = new_tp
+
+        else:  # short
+            # Update best price (lowest)
+            if close < self.best_price:
+                self.best_price = close
+
+            favorable_move = self.entry_price - self.best_price
+
+            if favorable_move >= 1.0 * R:
+                self.trailing_activated = True
+                # Trailing SL: best_price + 1.0R, but never above entry (breakeven)
+                new_sl = self.best_price + 1.0 * R
+                new_sl = min(new_sl, self.entry_price)  # at least breakeven
+                if new_sl < self.sl_price:
+                    self.sl_price = new_sl
+
+                # Trailing TP: best_price - 1.0R
+                new_tp = self.best_price - 1.0 * R
+                if new_tp < self.tp_price:
+                    self.tp_price = new_tp
 
     def _close(self, exit_price, reason):
         self.exit_price = exit_price
@@ -149,10 +220,11 @@ class Backtester:
         self.use_real_data = use_real_data
         self.result = None
 
-    def run(self, df=None, symbol="BTCUSDT"):
+    def run(self, df=None, symbol="BTCUSDT", btc_df=None):
         """
         Run backtest on provided DataFrame.
         If df is None, generates synthetic or real data.
+        btc_df: optional BTC DataFrame for regime detection on non-BTC symbols.
         Returns BacktestResult.
         """
         if df is None:
@@ -160,7 +232,7 @@ class Backtester:
                 df = self._fetch_real_data(symbol)
             else:
                 df = self._generate_test_data(symbol)
-        self.result = self._run_backtest(df, symbol)
+        self.result = self._run_backtest(df, symbol, btc_df=btc_df)
         return self.result
 
     def _generate_test_data(self, symbol):
@@ -289,7 +361,7 @@ class Backtester:
             logger.warning(f"Expected ~{expected} candles for 90 days at 4h, but got {len(df)}. Data may be incomplete or overlapping.")
         return df
 
-    def _run_backtest(self, df, symbol):
+    def _run_backtest(self, df, symbol, btc_df=None):
         """Core backtest logic — uses IndicatorsCalculator + composite score."""
         result = BacktestResult(self.initial_balance)
         open_positions = {}
@@ -307,7 +379,20 @@ class Backtester:
             "sweep": 0.7,
         }
 
-        ENTRY_THRESHOLD = 0.35  # composite_score > 0.35 → enter long (synced with strategist_client)
+        # Динамические пороги по BTC EMA50 на 4H (synced with strategist_client)
+        THRESHOLD_LONG_BULL = 0.30    # BTC bullish → LONG агрессивнее
+        THRESHOLD_LONG_BEAR = 0.45    # BTC bearish → LONG консервативнее
+        THRESHOLD_SHORT_BULL = 0.45   # BTC bullish → SHORT консервативнее
+        THRESHOLD_SHORT_BEAR = 0.30   # BTC bearish → SHORT агрессивнее
+
+        # Precompute BTC EMA50 for regime detection
+        btc_ema50 = None
+        if symbol == "BTCUSDT":
+            close_series = df['close']
+            btc_ema50 = close_series.ewm(span=50, adjust=False).mean()
+        elif btc_df is not None and len(btc_df) >= 50:
+            btc_close = btc_df['close']
+            btc_ema50 = btc_close.ewm(span=50, adjust=False).mean()
 
         for i, (timestamp, row) in enumerate(df.iterrows()):
             if i % 50 == 0:
@@ -315,17 +400,19 @@ class Backtester:
 
             current_price = row['close']
 
-            # Update open positions
+            # Update open positions with high/low for accurate SL/TP
+            candle_high = row['high']
+            candle_low = row['low']
             for sym in list(open_positions.keys()):
                 position = open_positions[sym]
-                closed, _ = position.update(current_price)
+                closed, _ = position.update(current_price, high=candle_high, low=candle_low)
 
                 if closed:
                     del open_positions[sym]
                     result.add_trade(position)
 
-            # Need at least 30 candles for indicators
-            if len(open_positions) == 0 and i >= 30:
+            # Need at least 50 candles for EMA50 + indicators
+            if len(open_positions) == 0 and i >= 50:
                 # Compute indicators on all candles up to current
                 slice_df = df.iloc[:i+1].copy()
                 indicators = calc.compute(slice_df)
@@ -336,12 +423,31 @@ class Backtester:
                 # Calculate composite score (STATE + EVENT)
                 composite = self._compute_composite(indicators, weights)
 
+                # Determine BTC regime for dynamic thresholds
+                if btc_ema50 is not None:
+                    if symbol == "BTCUSDT":
+                        # For BTC: use current price vs BTC EMA50 at same index
+                        btc_regime = "BULL" if current_price > btc_ema50.iloc[i] else "BEAR"
+                    else:
+                        # For alts: find closest BTC EMA50 by timestamp
+                        try:
+                            idx = btc_ema50.index.get_indexer([timestamp], method='nearest')[0]
+                            btc_price = btc_df['close'].iloc[idx]
+                            btc_regime = "BULL" if btc_price > btc_ema50.iloc[idx] else "BEAR"
+                        except Exception:
+                            btc_regime = "BULL"
+                else:
+                    btc_regime = "BULL"  # default for non-BTC symbols without BTC data
+
+                threshold_long = THRESHOLD_LONG_BULL if btc_regime == "BULL" else THRESHOLD_LONG_BEAR
+                threshold_short = THRESHOLD_SHORT_BEAR if btc_regime == "BEAR" else THRESHOLD_SHORT_BULL
+
                 # Determine direction based on composite score
                 is_bullish = indicators["ema_fast"] > indicators["ema_slow"]
                 rsi = indicators.get("rsi", 50)
 
                 # ── LONG entry ──
-                if composite > ENTRY_THRESHOLD and is_bullish and rsi < 70:
+                if composite > threshold_long and is_bullish and rsi < 70:
                     atr_pct = indicators.get("atr_pct", 0)
                     if atr_pct > 0.1:
                         sl_pct = 1.5 * atr_pct / 100
@@ -366,7 +472,7 @@ class Backtester:
                     logger.info(f"Opened LONG: {symbol} | Price: {current_price:.2f} | Score: {composite:.3f}")
 
                 # ── SHORT entry ──
-                elif composite < -ENTRY_THRESHOLD and not is_bullish and rsi > 30:
+                elif composite < -threshold_short and not is_bullish and rsi > 30:
                     atr_pct = indicators.get("atr_pct", 0)
                     if atr_pct > 0.1:
                         sl_pct = 1.5 * atr_pct / 100

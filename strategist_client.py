@@ -21,13 +21,17 @@ from telegram_bot import DinaBot
 logger = logging.getLogger(__name__)
 
 # Пороги входа — composite_score должен быть выше этого значения
-# Динамические пороги зависят от рыночного режима (EMA20 vs EMA50 на 4H)
-ENTRY_THRESHOLD_LONG = 0.30
+# Динамические пороги зависят от рыночного режима BTC EMA50 на 4H:
+#   BTC price > EMA50 → bullish: LONG агрессивнее, SHORT консервативнее
+#   BTC price < EMA50 → bearish: LONG консервативнее, SHORT агрессивнее
 
-# SHORT пороги по режиму:
-ENTRY_THRESHOLD_SHORT_BEAR = 0.30     # bear → агрессивнее
-ENTRY_THRESHOLD_SHORT_SIDEWAYS = 0.40 # sideways → стандарт
-ENTRY_THRESHOLD_SHORT_BULL = 0.50     # bull → консервативнее
+# LONG пороги по режиму BTC:
+ENTRY_THRESHOLD_LONG_BULL = 0.30      # bullish → агрессивнее
+ENTRY_THRESHOLD_LONG_BEAR = 0.45      # bearish → консервативнее
+
+# SHORT пороги по режиму BTC:
+ENTRY_THRESHOLD_SHORT_BULL = 0.45     # bullish → консервативнее
+ENTRY_THRESHOLD_SHORT_BEAR = 0.30     # bearish → агрессивнее
 
 # Funding rate: если |funding| > этого порога, повышаем threshold на FUNDING_PENALTY
 FUNDING_EXTREME_THRESHOLD = 0.0005  # 0.05% за 8 часов = ~0.15%/день
@@ -75,8 +79,7 @@ class StrategistClient:
         # Подписываемся на команды
         self.bus.subscribe(EventType.BOT_COMMAND, self._on_command)
 
-        threshold = ENTRY_THRESHOLD_LONG if self.direction == "LONG" else ENTRY_THRESHOLD_SHORT_SIDEWAYS
-        logger.info(f"StrategistClient [{self.direction}] initialized | threshold={threshold}")
+        logger.info(f"StrategistClient [{self.direction}] initialized | dynamic thresholds by BTC EMA50")
 
     # ──────────────────────────────────────────────
     # Главный цикл
@@ -126,31 +129,31 @@ class StrategistClient:
             logger.debug(f"[{self.direction}] {symbol}: funding rate unavailable: {e}")
 
         # ── Direction фильтр ──
-        # LONG-бот входит только при composite > threshold (бычий сигнал)
-        # SHORT-бот входит только при composite < -threshold (медвежий сигнал)
-        # SHORT порог — динамический, зависит от режима рынка (EMA20 vs EMA50 на 4H)
+        # Динамический порог по BTC EMA50 на 4H:
+        #   BULL: LONG агрессивнее (0.30), SHORT консервативнее (0.45)
+        #   BEAR: LONG консервативнее (0.45), SHORT агрессивнее (0.30)
+        btc_regime = self.signal_builder.detect_btc_regime()
+
         if self.direction == "LONG":
-            threshold = ENTRY_THRESHOLD_LONG + funding_penalty
+            base_threshold = ENTRY_THRESHOLD_LONG_BULL if btc_regime == "BULL" else ENTRY_THRESHOLD_LONG_BEAR
+            threshold = base_threshold + funding_penalty
             if composite <= threshold:
                 return
             side = "long"
             confidence = composite
+            logger.info(
+                f"[LONG] {symbol}: btc_regime={btc_regime} threshold={threshold:.2f} "
+                f"composite={composite:.3f}"
+            )
         elif self.direction == "SHORT":
-            # Динамический порог по режиму
-            regime = self.signal_builder.detect_regime(symbol)
-            if regime == "BEAR":
-                base_threshold = ENTRY_THRESHOLD_SHORT_BEAR
-            elif regime == "BULL":
-                base_threshold = ENTRY_THRESHOLD_SHORT_BULL
-            else:
-                base_threshold = ENTRY_THRESHOLD_SHORT_SIDEWAYS
+            base_threshold = ENTRY_THRESHOLD_SHORT_BEAR if btc_regime == "BEAR" else ENTRY_THRESHOLD_SHORT_BULL
             threshold = base_threshold + funding_penalty
             if composite >= -threshold:
                 return
             side = "short"
             confidence = abs(composite)
             logger.info(
-                f"[SHORT] {symbol}: regime={regime} threshold={threshold:.2f} "
+                f"[SHORT] {symbol}: btc_regime={btc_regime} threshold={threshold:.2f} "
                 f"composite={composite:.3f}"
             )
         else:

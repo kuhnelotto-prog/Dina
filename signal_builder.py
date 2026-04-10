@@ -433,22 +433,19 @@ class SignalBuilder:
     def _apply_filters(self, signals: dict, composite_score: float, regime: str) -> bool:
         """
         Применяет фильтры для входа на основе анализа winning/losing сделок.
+        Пороги зависят от BTC EMA50 режима (BULL/BEAR).
         
         Returns: True если сигнал проходит фильтры, False если нужно пропустить.
         """
-        # 1. Режим-зависимый порог (скорректировано: было слишком жёстко)
-        if regime == "BEAR":
-            threshold = 0.40  # было 0.45
-        elif regime == "SIDEWAYS":
-            threshold = 0.45  # было 0.50
-        else:  # BULL
-            threshold = 0.30  # было 0.35
+        # 1. Динамический порог по BTC EMA50 (synced with strategist_client)
+        btc_regime = self.detect_btc_regime()
         
-        # Проверяем порог (учитываем направление)
         if self._direction == "LONG":
+            threshold = 0.30 if btc_regime == "BULL" else 0.45
             if composite_score < threshold:
                 return False
         else:  # SHORT
+            threshold = 0.30 if btc_regime == "BEAR" else 0.45
             if composite_score > -threshold:
                 return False
         
@@ -494,6 +491,30 @@ class SignalBuilder:
         
         # Все фильтры пройдены
         return True
+
+    def detect_btc_regime(self) -> str:
+        """
+        Определяет глобальный рыночный режим по BTC EMA50 на 4H.
+        
+        BTC price > EMA50 → "BULL"
+        BTC price < EMA50 → "BEAR"
+        Нет данных → "BULL" (default, не блокируем)
+        """
+        df_4h = self._candle_cache.get(("BTCUSDT", "4h"))
+        if df_4h is None or len(df_4h) < 50:
+            logger.debug("No BTC 4H data for regime detection, defaulting to BULL")
+            return "BULL"
+
+        close = df_4h["close"] if "close" in df_4h.columns else df_4h.iloc[:, 3]
+        ema50 = close.ewm(span=50, adjust=False).mean()
+
+        current_close = float(close.iloc[-1])
+        current_ema50 = float(ema50.iloc[-1])
+
+        if current_close > current_ema50:
+            return "BULL"
+        else:
+            return "BEAR"
 
     def detect_regime(self, symbol: str) -> str:
         """

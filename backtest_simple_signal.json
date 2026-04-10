@@ -1,0 +1,302 @@
+{
+  "timestamp": "2026-04-09T17:40:16.472386+00:00",
+  "period": {
+    "start": "2026-01-09T17:40:05.660312+00:00",
+    "end": "2026-04-09T17:35:05.660320+00:00"
+  },
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "BNBUSDT",
+    "XRPUSDT",
+    "AVAXUSDT",
+    "DOGEUSDT",
+    "ADAUSDT",
+    "LINKUSDT",
+    "UNIUSDT"
+  ],
+  "results": [
+    {
+      "symbol": "BTCUSDT",
+      "regime_distribution": {
+        "BULL": 101,
+        "BEAR": 290,
+        "SIDEWAYS": 99
+      },
+      "old": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0
+      },
+      "new": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0,
+        "trades_by_regime": {
+          "BULL": 0,
+          "BEAR": 0,
+          "SIDEWAYS": 0
+        }
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "regime_distribution": {
+        "BULL": 117,
+        "BEAR": 267,
+        "SIDEWAYS": 106
+      },
+      "old": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0
+      },
+      "new": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0,
+        "trades_by_regime": {
+          "BULL": 0,
+          "BEAR": 0,
+          "SIDEWAYS": 0
+        }
+      }
+    },
+    {
+      "symbol": "SOLUSDT",
+      "regime_distribution": {
+        "BULL": 94,
+        "BEAR": 306,
+        "SIDEWAYS": 90
+      },
+      "old": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0
+      },
+      "new": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0,
+        "trades_by_regime": {
+          "BULL": 0,
+          "BEAR": 0,
+          "SIDEWAYS": 0
+        }
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "regime_distribution": {
+        "BULL": 91,
+        "BEAR": 298,
+        "SIDEWAYS": 101
+      },
+      "old": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0
+      },
+      "new": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0,
+        "trades_by_regime": {
+          "BULL": 0,
+          "BEAR": 0,
+          "SIDEWAYS": 0
+        }
+      }
+    },
+    {
+      "symbol": "XRPUSDT",
+      "regime_distribution": {
+        "BULL": 71,
+        "BEAR": 344,
+        "SIDEWAYS": 75
+      },
+      "old": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0
+      },
+      "new": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0,
+        "trades_by_regime": {
+          "BULL": 0,
+          "BEAR": 0,
+          "SIDEWAYS": 0
+        }
+      }
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "regime_distribution": {
+        "BULL": 105,
+        "BEAR": 292,
+        "SIDEWAYS": 93
+      },
+      "old": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0
+      },
+      "new": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0,
+        "trades_by_regime": {
+          "BULL": 0,
+          "BEAR": 0,
+          "SIDEWAYS": 0
+        }
+      }
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "regime_distribution": {
+        "BULL": 65,
+        "BEAR": 309,
+        "SIDEWAYS": 116
+      },
+      "old": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0
+      },
+      "new": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0,
+        "trades_by_regime": {
+          "BULL": 0,
+          "BEAR": 0,
+          "SIDEWAYS": 0
+        }
+      }
+    },
+    {
+      "symbol": "ADAUSDT",
+      "regime_distribution": {
+        "BULL": 70,
+        "BEAR": 319,
+        "SIDEWAYS": 101
+      },
+      "old": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0
+      },
+      "new": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0,
+        "trades_by_regime": {
+          "BULL": 0,
+          "BEAR": 0,
+          "SIDEWAYS": 0
+        }
+      }
+    },
+    {
+      "symbol": "LINKUSDT",
+      "regime_distribution": {
+        "BULL": 85,
+        "BEAR": 267,
+        "SIDEWAYS": 138
+      },
+      "old": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0
+      },
+      "new": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0,
+        "trades_by_regime": {
+          "BULL": 0,
+          "BEAR": 0,
+          "SIDEWAYS": 0
+        }
+      }
+    },
+    {
+      "symbol": "UNIUSDT",
+      "regime_distribution": {
+        "BULL": 102,
+        "BEAR": 321,
+        "SIDEWAYS": 67
+      },
+      "old": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0
+      },
+      "new": {
+        "trades": 0,
+        "winrate": 0,
+        "pnl_usd": 0,
+        "pnl_pct": 0.0,
+        "pf": 0,
+        "trades_by_regime": {
+          "BULL": 0,
+          "BEAR": 0,
+          "SIDEWAYS": 0
+        }
+      }
+    }
+  ],
+  "summary": {
+    "total_trades_old": 0,
+    "total_trades_new": 0,
+    "total_pnl_old": 0.0,
+    "total_pnl_new": 0.0,
+    "regime_distribution": {
+      "BULL": 0,
+      "BEAR": 0,
+      "SIDEWAYS": 0
+    }
+  }
+}
