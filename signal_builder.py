@@ -136,15 +136,30 @@ class SignalBuilder:
             weights = await self._learning.get_weights()
             signal["weights"] = weights
 
+        # Применяем фильтры на основе анализа winning/losing сделок
+        regime = self.detect_regime(symbol)
+        passes_filters = self._apply_filters(signal, multi_score, regime)
+        
+        if not passes_filters:
+            logger.info(f"🚫 {symbol} {self._direction} filtered out: "
+                       f"composite={multi_score:.3f}, regime={regime}")
+            signal["composite_score"] = 0.0  # обнуляем сигнал
+            signal["filtered"] = True
+        else:
+            signal["filtered"] = False
+
         self._last_signals[symbol] = signal
         self._last_signal_time[symbol] = time.monotonic()
+        
         # Логируем сигнал
         event_logger.signal_generated(
             symbol=symbol,
             direction=self._direction,
             composite_score=multi_score,
             rsi=indicators["rsi"],
-            volume_ratio=indicators["volume_ratio"]
+            volume_ratio=indicators["volume_ratio"],
+            regime=regime,
+            filtered=not passes_filters
         )
         return signal
 
@@ -418,6 +433,65 @@ class SignalBuilder:
 
         # Clamp to [-1, +1]
         return max(-1.0, min(1.0, composite))
+
+    def _apply_filters(self, signals: dict, composite_score: float, regime: str) -> bool:
+        """
+        Применяет фильтры для входа на основе анализа winning/losing сделок.
+        
+        Returns: True если сигнал проходит фильтры, False если нужно пропустить.
+        """
+        # 1. Режим-зависимый порог
+        if regime == "BEAR":
+            threshold = 0.45
+        elif regime == "SIDEWAYS":
+            threshold = 0.50
+        else:  # BULL
+            threshold = 0.35
+        
+        # Проверяем порог (учитываем направление)
+        if self._direction == "LONG":
+            if composite_score < threshold:
+                return False
+        else:  # SHORT
+            if composite_score > -threshold:
+                return False
+        
+        # 2. ATR фильтр (пропускать при малой волатильности)
+        atr_pct = signals.get("atr_pct", 0)
+        if atr_pct < 0.5:  # ATR < 0.5%
+            return False
+        
+        # 3. STATE компоненты: минимум 2 из 4 в одном направлении
+        state_components = 0
+        d = 1 if self._direction == "LONG" else -1
+        
+        # EMA trend
+        if (self._direction == "LONG" and signals.get("ema_bullish")) or \
+           (self._direction == "SHORT" and signals.get("ema_bearish")):
+            state_components += 1
+        
+        # RSI zone
+        rsi = signals.get("rsi", 50)
+        if self._direction == "LONG" and (signals.get("rsi_oversold") or signals.get("rsi_low")):
+            state_components += 1
+        elif self._direction == "SHORT" and (signals.get("rsi_overbought") or signals.get("rsi_high")):
+            state_components += 1
+        
+        # MACD
+        if (self._direction == "LONG" and signals.get("macd_bullish")) or \
+           (self._direction == "SHORT" and signals.get("macd_bearish")):
+            state_components += 1
+        
+        # Bollinger position
+        if (self._direction == "LONG" and signals.get("bb_below_lower")) or \
+           (self._direction == "SHORT" and signals.get("bb_above_upper")):
+            state_components += 1
+        
+        if state_components < 2:
+            return False
+        
+        # Все фильтры пройдены
+        return True
 
     def detect_regime(self, symbol: str) -> str:
         """
