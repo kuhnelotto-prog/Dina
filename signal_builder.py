@@ -157,9 +157,7 @@ class SignalBuilder:
             direction=self._direction,
             composite_score=multi_score,
             rsi=indicators["rsi"],
-            volume_ratio=indicators["volume_ratio"],
-            regime=regime,
-            filtered=not passes_filters
+            volume_ratio=indicators["volume_ratio"]
         )
         return signal
 
@@ -440,13 +438,13 @@ class SignalBuilder:
         
         Returns: True если сигнал проходит фильтры, False если нужно пропустить.
         """
-        # 1. Режим-зависимый порог
+        # 1. Режим-зависимый порог (скорректировано: было слишком жёстко)
         if regime == "BEAR":
-            threshold = 0.45
+            threshold = 0.40  # было 0.45
         elif regime == "SIDEWAYS":
-            threshold = 0.50
+            threshold = 0.45  # было 0.50
         else:  # BULL
-            threshold = 0.35
+            threshold = 0.30  # было 0.35
         
         # Проверяем порог (учитываем направление)
         if self._direction == "LONG":
@@ -458,36 +456,42 @@ class SignalBuilder:
         
         # 2. ATR фильтр (пропускать при малой волатильности)
         atr_pct = signals.get("atr_pct", 0)
-        if atr_pct < 0.5:  # ATR < 0.5%
+        if atr_pct < 0.3:  # ATR < 0.3% (было 0.5%)
             return False
         
-        # 3. STATE компоненты: минимум 2 из 4 в одном направлении
+        # 3. STATE компоненты: минимум 1 из 4 в одном направлении (было 2)
         state_components = 0
-        d = 1 if self._direction == "LONG" else -1
         
         # EMA trend
-        if (self._direction == "LONG" and signals.get("ema_bullish")) or \
-           (self._direction == "SHORT" and signals.get("ema_bearish")):
+        if (self._direction == "LONG" and signals.get("ema_fast", 0) > signals.get("ema_slow", 0)) or \
+           (self._direction == "SHORT" and signals.get("ema_fast", 0) < signals.get("ema_slow", 0)):
             state_components += 1
         
         # RSI zone
         rsi = signals.get("rsi", 50)
-        if self._direction == "LONG" and (signals.get("rsi_oversold") or signals.get("rsi_low")):
+        if self._direction == "LONG" and rsi < 40:
             state_components += 1
-        elif self._direction == "SHORT" and (signals.get("rsi_overbought") or signals.get("rsi_high")):
+        elif self._direction == "SHORT" and rsi > 60:
             state_components += 1
         
         # MACD
-        if (self._direction == "LONG" and signals.get("macd_bullish")) or \
-           (self._direction == "SHORT" and signals.get("macd_bearish")):
+        macd = signals.get("macd", 0)
+        macd_signal = signals.get("macd_signal", 0)
+        if self._direction == "LONG" and macd > macd_signal:
+            state_components += 1
+        elif self._direction == "SHORT" and macd < macd_signal:
             state_components += 1
         
         # Bollinger position
-        if (self._direction == "LONG" and signals.get("bb_below_lower")) or \
-           (self._direction == "SHORT" and signals.get("bb_above_upper")):
+        price = signals.get("price", 0)
+        bb_lower = signals.get("bb_lower", 0)
+        bb_upper = signals.get("bb_upper", 0)
+        if self._direction == "LONG" and price < bb_lower:
+            state_components += 1
+        elif self._direction == "SHORT" and price > bb_upper:
             state_components += 1
         
-        if state_components < 2:
+        if state_components < 1:
             return False
         
         # Все фильтры пройдены
