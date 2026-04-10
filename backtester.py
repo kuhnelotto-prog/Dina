@@ -328,7 +328,6 @@ class Backtester:
             if len(open_positions) == 0 and i >= 30:
                 # Compute indicators on all candles up to current
                 slice_df = df.iloc[:i+1].copy()
-                slice_df.reset_index(inplace=True)
                 indicators = calc.compute(slice_df)
 
                 if "error" in indicators:

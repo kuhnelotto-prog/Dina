@@ -194,10 +194,10 @@ class SignalBuilder:
             total_weight += weight
             signals_by_tf[tf] = composite
 
-        # Защита: если не хватает данных хотя бы по одному ТФ — не торгуем
+        # Graceful degradation: используем доступные ТФ
+        # (было: return 0.0 если хоть один ТФ отсутствует — слишком строго)
         if missing_tfs:
-            logger.debug(f"Missing timeframes for {symbol}: {missing_tfs}")
-            return 0.0, {}
+            logger.debug(f"Missing timeframes for {symbol}: {missing_tfs}, using available: {list(signals_by_tf.keys())}")
 
         if total_weight == 0:
             return 0.0, {}
@@ -336,57 +336,55 @@ class SignalBuilder:
         """
         Считает взвешенный композитный сигнал от -1 до 1.
         
-        Архитектура v2:
-        - STATE слой (60% веса): ema_trend + rsi_zone + macd_hist + bb_position
-          Активны на КАЖДОЙ свече, дают базовый фон.
-        - EVENT слой (40% веса): ema_cross + engulfing + fvg + sweep
-          Редкие бонусы, усиливают сигнал при совпадении.
-        - Volume spike = множитель x1.2 (не в score).
+        Direction-AGNOSTIC (как Backtester):
+        +1 = бычий рынок, -1 = медвежий рынок.
+        Направление (LONG/SHORT) проверяется в compute() и _apply_filters().
+        
+        Архитектура v2 (STATE + EVENT):
+        - STATE слой (60%): ema_trend + rsi_zone + macd_hist + bb_position
+        - EVENT слой (40%): ema_cross + engulfing + fvg + sweep
+        - Volume spike = множитель x1.2
         """
-        # Направление: LONG=+1, SHORT=-1
-        d = 1 if self._direction == "LONG" else -1
-
-        # ── STATE слой (базовый фон, max = 1.0) ──
+        # ── STATE слой (базовый фон, max = 4.0) ──
         state_score = 0.0
         state_max = 4.0  # 4 компонента по 1.0
 
         # 1. EMA trend state (вес 1.0)
         if signals.get("ema_bullish"):
-            state_score += 1.0 * d
+            state_score += 1.0   # бычий тренд
         elif signals.get("ema_bearish"):
-            state_score += 1.0 * -d
+            state_score -= 1.0   # медвежий тренд
 
         # 2. RSI zone (вес 1.0)
         rsi = signals.get("rsi", 50)
         if signals.get("rsi_overbought"):       # RSI > 70
-            state_score += 1.0 * -d             # медвежий сигнал
+            state_score -= 1.0                  # перекупленность → медвежий
         elif signals.get("rsi_oversold"):        # RSI < 30
-            state_score += 1.0 * d              # бычий сигнал
+            state_score += 1.0                  # перепроданность → бычий
         elif signals.get("rsi_high"):            # RSI > 60
-            state_score += 0.4 * -d             # слабо медвежий
+            state_score -= 0.4                  # слабо медвежий
         elif signals.get("rsi_low"):             # RSI < 40
-            state_score += 0.4 * d              # слабо бычий
+            state_score += 0.4                  # слабо бычий
 
         # 3. MACD histogram (вес 1.0)
         if signals.get("macd_bearish"):
-            state_score += 1.0 * -d
+            state_score -= 1.0   # медвежий
         elif signals.get("macd_bullish"):
-            state_score += 1.0 * d
+            state_score += 1.0   # бычий
 
         # 4. Bollinger position (вес 1.0)
         if signals.get("bb_above_upper"):
-            state_score += 1.0 * -d             # перекупленность → медвежий
+            state_score -= 1.0                  # перекупленность → медвежий
         elif signals.get("bb_below_lower"):
-            state_score += 1.0 * d              # перепроданность → бычий
+            state_score += 1.0                  # перепроданность → бычий
         elif signals.get("bb_squeeze"):
-            state_score += 0.3                  # нейтральный бонус (готовность к движению)
+            state_score += 0.3                  # нейтральный бонус
 
         # Нормализуем state: [-1, +1]
         state_normalized = state_score / state_max if state_max > 0 else 0.0
 
         # ── EVENT слой (бонусы) ──
         event_score = 0.0
-        # Используем веса из словаря weights
         ema_cross_weight = weights.get("ema_cross", 1.0)
         engulfing_weight = weights.get("engulfing", 0.8)
         fvg_weight = weights.get("fvg", 0.6)
@@ -396,27 +394,27 @@ class SignalBuilder:
 
         # EMA cross (event)
         if signals.get("ema_cross_bull"):
-            event_score += ema_cross_weight * d
+            event_score += ema_cross_weight
         elif signals.get("ema_cross_bear"):
-            event_score += ema_cross_weight * -d
+            event_score -= ema_cross_weight
 
         # Engulfing
         if signals.get("engulfing_bull"):
-            event_score += engulfing_weight * d
+            event_score += engulfing_weight
         elif signals.get("engulfing_bear"):
-            event_score += engulfing_weight * -d
+            event_score -= engulfing_weight
 
         # FVG
         if signals.get("fvg_bull"):
-            event_score += fvg_weight * d
+            event_score += fvg_weight
         elif signals.get("fvg_bear"):
-            event_score += fvg_weight * -d
+            event_score -= fvg_weight
 
         # Sweep
         if signals.get("sweep_bull"):
-            event_score += sweep_weight * d
+            event_score += sweep_weight
         elif signals.get("sweep_bear"):
-            event_score += sweep_weight * -d
+            event_score -= sweep_weight
 
         # Нормализуем event: [-1, +1]
         event_normalized = event_score / event_max if event_max > 0 else 0.0
