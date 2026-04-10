@@ -84,8 +84,10 @@ def compare_symbol(symbol):
     
     results = {
         "symbol": symbol,
-        "old": {"trades": 0, "long": 0, "short": 0, "winrate": 0.0, "pnl_pct": 0.0, "pf": 0.0},
+        "old": {"trades": 0, "long": 0, "short": 0, "winrate": 0.0, "pnl_pct": 0.0, "pf": 0.0,
+                "avg_win": 0.0, "avg_loss": 0.0},
         "new": {"trades": 0, "long": 0, "short": 0, "winrate": 0.0, "pnl_pct": 0.0, "pf": 0.0,
+                "avg_win": 0.0, "avg_loss": 0.0,
                 "trades_by_regime": {"BULL": 0, "BEAR": 0, "SIDEWAYS": 0}},
         "regime_distribution": {"BULL": 0, "BEAR": 0, "SIDEWAYS": 0}
     }
@@ -109,9 +111,13 @@ def compare_symbol(symbol):
         results["old"]["short"] = sum(1 for t in result_old.trades if t.side == "short")
         results["old"]["winrate"] = result_old.winning_trades / result_old.total_trades * 100
         results["old"]["pnl_pct"] = result_old.total_pnl_usd / 10000 * 100
+        wins = [t.pnl_pct for t in result_old.trades if t.pnl_usd > 0]
+        losses = [t.pnl_pct for t in result_old.trades if t.pnl_usd <= 0]
         total_win = sum(t.pnl_usd for t in result_old.trades if t.pnl_usd > 0)
         total_loss = sum(t.pnl_usd for t in result_old.trades if t.pnl_usd < 0)
         results["old"]["pf"] = abs(total_win / total_loss) if total_loss != 0 else (999 if total_win > 0 else 0)
+        results["old"]["avg_win"] = sum(wins) / len(wins) if wins else 0.0
+        results["old"]["avg_loss"] = sum(losses) / len(losses) if losses else 0.0
     
     # Новый порог — тот же Backtester (STATE-based уже встроен)
     print(f"  {symbol}: new threshold (STATE-based)...")
@@ -124,9 +130,13 @@ def compare_symbol(symbol):
         results["new"]["short"] = sum(1 for t in result_new.trades if t.side == "short")
         results["new"]["winrate"] = result_new.winning_trades / result_new.total_trades * 100
         results["new"]["pnl_pct"] = result_new.total_pnl_usd / 10000 * 100
+        wins = [t.pnl_pct for t in result_new.trades if t.pnl_usd > 0]
+        losses = [t.pnl_pct for t in result_new.trades if t.pnl_usd <= 0]
         total_win = sum(t.pnl_usd for t in result_new.trades if t.pnl_usd > 0)
         total_loss = sum(t.pnl_usd for t in result_new.trades if t.pnl_usd < 0)
         results["new"]["pf"] = abs(total_win / total_loss) if total_loss != 0 else (999 if total_win > 0 else 0)
+        results["new"]["avg_win"] = sum(wins) / len(wins) if wins else 0.0
+        results["new"]["avg_loss"] = sum(losses) / len(losses) if losses else 0.0
         
         # Распределение сделок по режимам
         for trade in result_new.trades:
@@ -201,14 +211,52 @@ def main():
         pct = count / total_trades * 100 if total_trades > 0 else 0
         print(f"  {regime:<10} {count:>4} trades ({pct:.1f}%)")
     
+    # Агрегированные метрики
+    all_wins = []
+    all_losses = []
+    for res in all_results:
+        all_wins.append(res["new"]["avg_win"])
+        all_losses.append(res["new"]["avg_loss"])
+    
+    total_winning = sum(res["new"].get("trades", 0) * res["new"].get("winrate", 0) / 100 for res in all_results)
+    total_losing = total_trades - total_winning
+    avg_winrate = total_winning / total_trades * 100 if total_trades > 0 else 0
+    
+    # Средний win/loss по всем символам (взвешенный по количеству сделок)
+    weighted_avg_win = 0.0
+    weighted_avg_loss = 0.0
+    total_win_count = 0
+    total_loss_count = 0
+    for res in all_results:
+        n = res["new"]["trades"]
+        wr = res["new"]["winrate"] / 100
+        w_count = int(n * wr)
+        l_count = n - w_count
+        weighted_avg_win += res["new"]["avg_win"] * w_count
+        weighted_avg_loss += res["new"]["avg_loss"] * l_count
+        total_win_count += w_count
+        total_loss_count += l_count
+    
+    avg_win = weighted_avg_win / total_win_count if total_win_count > 0 else 0
+    avg_loss = weighted_avg_loss / total_loss_count if total_loss_count > 0 else 0
+    
+    # Profit Factor
+    total_gross_win = avg_win * total_win_count
+    total_gross_loss = abs(avg_loss) * total_loss_count
+    total_pf = total_gross_win / total_gross_loss if total_gross_loss > 0 else 0
+    
     # Итог
     print("\n" + "=" * 100)
     print("SUMMARY")
     print("=" * 100)
-    print(f"Total trades:  {total_trades}")
-    print(f"  LONG:        {total_long}")
-    print(f"  SHORT:       {total_short}")
-    print(f"Total PnL%:    {total_pnl:+.2f}%")
+    print(f"Total trades:    {total_trades}")
+    print(f"  LONG:          {total_long}")
+    print(f"  SHORT:         {total_short}")
+    print(f"WinRate:         {avg_winrate:.1f}% ({int(total_winning)}W / {int(total_losing)}L)")
+    print(f"Profit Factor:   {total_pf:.2f}")
+    print(f"Avg Win:         {avg_win:+.2f}%")
+    print(f"Avg Loss:        {avg_loss:+.2f}%")
+    print(f"Total PnL%:      {total_pnl:+.2f}%")
     
     # Сохраняем
     output = {
@@ -221,6 +269,10 @@ def main():
             "total_long": total_long,
             "total_short": total_short,
             "total_pnl": total_pnl,
+            "winrate": avg_winrate,
+            "profit_factor": total_pf,
+            "avg_win_pct": avg_win,
+            "avg_loss_pct": avg_loss,
             "regime_distribution": dict(regime_trades),
         }
     }
