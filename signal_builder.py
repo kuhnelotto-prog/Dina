@@ -123,6 +123,9 @@ class SignalBuilder:
             # Добавим sweep, если есть
             "sweep_bull": indicators.get("sweep_bull", False),
             "sweep_bear": indicators.get("sweep_bear", False),
+            # ADX(14) for trend-strength filter
+            "adx": indicators.get("adx", 0.0),
+            "adx_prev": indicators.get("adx_prev", 0.0),
             "composite_score": 0.0,
         }
 

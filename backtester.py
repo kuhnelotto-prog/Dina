@@ -21,6 +21,33 @@ from indicators_calc import IndicatorsCalculator
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ── ADX Filter ──────────────────────────────────────
+# Symbols removed from trading (low liquidity / poor ADX performance)
+ADX_BLACKLIST = {"UNIUSDT", "NEARUSDT", "FILUSDT"}  # these are no longer in SYMBOLS list
+
+class ADXFilter:
+    """
+    ADX(14) trend-strength filter.
+    Rejects entries when ADX < threshold or ADX is falling.
+    """
+    def __init__(self, threshold: float = 18.0, min_growth: float = 0.5):
+        self.threshold = threshold
+        self.min_growth = min_growth  # ADX must grow by at least this vs prev candle
+
+    def check(self, adx: float, adx_prev: float) -> tuple:
+        """
+        Returns (passed: bool, reason: str).
+        passed=True means trend is strong enough to trade.
+        """
+        if adx < self.threshold:
+            return False, f"ADX={adx:.1f} < {self.threshold} (no trend)"
+        growth = adx - adx_prev
+        if growth < self.min_growth:
+            return False, f"ADX falling: {adx_prev:.1f}->{adx:.1f} (growth={growth:+.1f} < {self.min_growth})"
+        return True, f"ADX={adx:.1f} OK (growth={growth:+.1f})"
+
+# ─────────────────────────────────────────────────────
+
 START_BALANCE = 10000.0
 START_DATE = datetime.utcnow() - timedelta(days=90)
 END_DATE = datetime.utcnow() - timedelta(minutes=5)
@@ -366,6 +393,12 @@ class Backtester:
         result = BacktestResult(self.initial_balance)
         open_positions = {}
         calc = IndicatorsCalculator()
+        adx_filter = ADXFilter(threshold=18.0, min_growth=0.5)
+
+        # ── Blacklist check ──
+        if symbol in ADX_BLACKLIST:
+            logger.info(f"SKIP {symbol}: in ADX blacklist")
+            return result
 
         # Signal weights (same as signal_builder.py defaults)
         weights = {
@@ -419,6 +452,13 @@ class Backtester:
 
                 if "error" in indicators:
                     continue
+
+                # ── ADX Filter (BEFORE Score) ──
+                adx_val = indicators.get("adx", 0.0)
+                adx_prev = indicators.get("adx_prev", 0.0)
+                adx_ok, adx_reason = adx_filter.check(adx_val, adx_prev)
+                if not adx_ok:
+                    continue  # skip: no trend or ADX falling
 
                 # Calculate composite score (STATE + EVENT)
                 composite = self._compute_composite(indicators, weights)

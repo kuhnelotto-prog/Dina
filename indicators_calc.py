@@ -77,6 +77,11 @@ class IndicatorsCalculator:
             "bb_middle": float(bb.bollinger_mavg().iloc[last]) if not pd.isna(bb.bollinger_mavg().iloc[last]) else 0.0,
         }
 
+        # ADX(14)
+        adx_val, adx_prev = self._calculate_adx(df, last)
+        result["adx"] = adx_val
+        result["adx_prev"] = adx_prev
+
         # Свечные паттерны + FVG + Sweep
         result.update(self._check_patterns(df, last, prev, pprev))
         result.update(self._check_sweep(df, last, prev))
@@ -156,6 +161,25 @@ class IndicatorsCalculator:
         sweep_bear = bool((high.iloc[last] > prev_high) and (close.iloc[last] < prev_high))
 
         return {"sweep_bull": sweep_bull, "sweep_bear": sweep_bear}
+
+    def _calculate_adx(self, df: pd.DataFrame, last: int) -> tuple:
+        """
+        Calculate ADX(14) using ta library.
+        Returns (adx_current, adx_previous) for growth detection.
+        """
+        if len(df) < 20:
+            return 0.0, 0.0
+        try:
+            adx_indicator = ta.trend.ADXIndicator(
+                high=df["high"], low=df["low"], close=df["close"], window=14
+            )
+            adx_series = adx_indicator.adx()
+            adx_val = float(adx_series.iloc[last]) if not pd.isna(adx_series.iloc[last]) else 0.0
+            prev = last - 1
+            adx_prev = float(adx_series.iloc[prev]) if prev >= 0 and not pd.isna(adx_series.iloc[prev]) else 0.0
+            return adx_val, adx_prev
+        except Exception:
+            return 0.0, 0.0
 
     @staticmethod
     def _ensure_ascending(df: pd.DataFrame) -> pd.DataFrame:

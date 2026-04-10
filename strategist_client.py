@@ -109,8 +109,22 @@ class StrategistClient:
 
     async def _process_symbol(self, symbol: str):
         """Обрабатывает один символ."""
+        # ── Blacklist ──
+        from backtester import ADX_BLACKLIST, ADXFilter
+        if symbol in ADX_BLACKLIST:
+            return
+
         signal = await self.signal_builder.compute(symbol, current_tf=self.timeframes[1])
         if "error" in signal:
+            return
+
+        # ── ADX Filter (BEFORE Score) ──
+        adx_val = signal.get("adx", 0.0)
+        adx_prev = signal.get("adx_prev", 0.0)
+        _adx_filter = ADXFilter(threshold=18.0, min_growth=0.5)
+        adx_ok, adx_reason = _adx_filter.check(adx_val, adx_prev)
+        if not adx_ok:
+            logger.debug(f"[{self.direction}] {symbol}: ADX rejected: {adx_reason}")
             return
 
         composite = signal.get("composite_score", 0.0)

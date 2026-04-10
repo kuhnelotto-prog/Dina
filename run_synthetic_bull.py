@@ -16,7 +16,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
-           "AVAXUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT", "UNIUSDT"]
+           "AVAXUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT", "DOTUSDT",
+           "ATOMUSDT", "SUIUSDT"]
 
 # Starting prices and volatility per symbol
 SYMBOL_CONFIG = {
@@ -29,7 +30,9 @@ SYMBOL_CONFIG = {
     "DOGEUSDT": {"start": 0.12,  "vol": 0.003,"drift": 0.0010},
     "ADAUSDT":  {"start": 0.45,  "vol": 0.008,"drift": 0.0009},
     "LINKUSDT": {"start": 14,    "vol": 0.3,  "drift": 0.0010},
-    "UNIUSDT":  {"start": 7,     "vol": 0.15, "drift": 0.0011},
+    "DOTUSDT":  {"start": 6,     "vol": 0.12, "drift": 0.0009},
+    "ATOMUSDT": {"start": 8,     "vol": 0.15, "drift": 0.0010},
+    "SUIUSDT":  {"start": 1.5,   "vol": 0.03, "drift": 0.0012},
 }
 
 

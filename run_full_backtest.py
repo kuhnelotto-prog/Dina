@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 # Символы из .env
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", 
-           "AVAXUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT", "UNIUSDT"]
+           "AVAXUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT", "DOTUSDT",
+           "ATOMUSDT", "SUIUSDT"]
 
 def fetch_candles(symbol, days=90, granularity="4H"):
     """Fetch real candles from Bitget."""
