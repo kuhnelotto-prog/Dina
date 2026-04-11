@@ -17,10 +17,9 @@ from backtester import Backtester
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Символы из .env
-SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", 
-           "AVAXUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT", "DOTUSDT",
-           "ATOMUSDT", "SUIUSDT"]
+# Символы из .env (10 штук, без SOLUSDT и DOTUSDT)
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "AVAXUSDT",
+           "DOGEUSDT", "ADAUSDT", "LINKUSDT", "ATOMUSDT", "SUIUSDT"]
 
 def fetch_candles(symbol, days=90, granularity="4H"):
     """Fetch real candles from Bitget."""
@@ -54,7 +53,27 @@ def fetch_candles(symbol, days=90, granularity="4H"):
     df.set_index("timestamp", inplace=True)
     return df
 
-def run_symbol_backtest(symbol, btc_df=None):
+
+def fetch_candles_no_range(symbol, granularity="1D", limit=200):
+    """Fetch candles without startTime/endTime (Bitget rejects range for 1D >90d)."""
+    params = {"symbol": symbol, "granularity": granularity, "limit": limit,
+              "productType": "USDT-FUTURES"}
+    resp = requests.get("https://api.bitget.com/api/v2/mix/market/candles", params=params, timeout=30)
+    data = resp.json()
+    if data.get("code") != "00000" or not data.get("data"):
+        logger.warning(f"API error for {symbol} 1D: {data.get('msg')}")
+        return pd.DataFrame()
+    candles = data["data"]
+    all_candles = []
+    for c in candles:
+        all_candles.append([int(c[0]), float(c[1]), float(c[2]), float(c[3]), float(c[4]), float(c[5])])
+    df = pd.DataFrame(all_candles, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+    df = df.sort_values("timestamp").reset_index(drop=True)
+    df.set_index("timestamp", inplace=True)
+    return df
+
+def run_symbol_backtest(symbol, btc_df=None, btc_1d_df=None):
     """Run backtest for a single symbol."""
     logger.info(f"=== {symbol} ===")
     try:
@@ -67,7 +86,7 @@ def run_symbol_backtest(symbol, btc_df=None):
             return None
         
         bt = Backtester(initial_balance=10000.0, use_real_data=False)
-        result = bt.run(df=df, symbol=symbol, btc_df=btc_df)
+        result = bt.run(df=df, symbol=symbol, btc_df=btc_df, btc_1d_df=btc_1d_df)
         
         # Собираем статистику
         total_trades = result.total_trades
@@ -79,28 +98,32 @@ def run_symbol_backtest(symbol, btc_df=None):
         # Используем initial_sl (оригинальный SL) для расчёта risk
         rr_values = []
         debug_trades = []
-        tsl_count = 0
+        step_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0}
+        win_rr_values = []
         for t in result.trades:
-            # Use initial_sl for consistent RR calculation
             init_sl = getattr(t, 'initial_sl', t.sl_price)
-            trailing = getattr(t, 'trailing_activated', False)
-            if trailing:
-                tsl_count += 1
+            step = getattr(t, 'trailing_step', 0)
+            remaining = getattr(t, 'remaining_pct', 1.0)
+            reason = getattr(t, 'exit_reason', '?')
+            step_counts[step] = step_counts.get(step, 0) + 1
             if t.side == "long":
                 risk = abs(t.entry_price - init_sl)
                 reward = t.exit_price - t.entry_price if t.exit_price else 0
-            else:  # short
+            else:
                 risk = abs(init_sl - t.entry_price)
                 reward = t.entry_price - t.exit_price if t.exit_price else 0
             rr = reward / risk if risk > 0 else 0.0
             rr_values.append(rr)
-            tsl_tag = " [TSL]" if trailing else ""
+            if t.pnl_usd > 0:
+                win_rr_values.append(rr)
+            step_tag = f" [step={step}]" if step > 0 else ""
             debug_trades.append(
                 f"{t.side:>5} entry={t.entry_price:.2f} exit={t.exit_price:.2f} "
-                f"sl={init_sl:.2f}->{t.sl_price:.2f} risk={risk:.2f} reward={reward:.2f} "
-                f"RR={rr:.2f} pnl={t.pnl_pct:+.2f}%{tsl_tag}"
+                f"sl={init_sl:.2f}->{t.sl_price:.2f} risk={risk:.2f} RR={rr:.2f} "
+                f"pnl={t.pnl_pct:+.2f}% [{reason}]{step_tag} rem={remaining*100:.0f}%"
             )
         avg_rr = np.mean(rr_values) if rr_values else 0.0
+        avg_win_rr = np.mean(win_rr_values) if win_rr_values else 0.0
         
         # PnL %
         total_return_pct = (result.final_balance - result.initial_balance) / result.initial_balance * 100
@@ -126,11 +149,15 @@ def run_symbol_backtest(symbol, btc_df=None):
             "long_win_rate": long_win_rate,
             "short_win_rate": short_win_rate,
             "avg_rr": avg_rr,
+            "avg_win_rr": avg_win_rr,
+            "step_counts": step_counts,
             "max_drawdown_pct": result.max_drawdown_pct,
             "total_pnl_usd": result.total_pnl_usd,
             "total_pnl_pct": total_return_pct,
             "rr_list": rr_values,
+            "win_rr_list": win_rr_values,
             "debug_trades": debug_trades,
+            "raw_trades": result.trades,  # for step-4 detail analysis
             "final_balance": result.final_balance,
             "success": True
         }
@@ -146,19 +173,31 @@ def run_symbol_backtest(symbol, btc_df=None):
 
 def main():
     print("=" * 100)
-    print("ПОЛНЫЙ БЭКТЕСТ (динамические пороги по BTC EMA50)")
+    print("ПОЛНЫЙ БЭКТЕСТ (BTC 1D EMA50 master filter + динамические пороги)")
     print("Символы:", ", ".join(SYMBOLS))
     print("Период: 90 дней, таймфрейм 4H")
+    print("Master filter: LONG only if BTC > EMA50(1D), SHORT only if BTC < EMA50(1D)")
     print("=" * 100)
     
-    # Загружаем BTC свечи первыми — для режима всех символов
-    print("Загрузка BTC данных для режима...")
-    btc_df = fetch_candles("BTCUSDT", days=90)
-    print(f"BTC свечей: {len(btc_df)}")
+    # Загружаем BTC 4H свечи — для режима всех символов
+    print("Загрузка BTC 4H данных для режима...")
+    btc_df = fetch_candles("BTCUSDT", days=90, granularity="4H")
+    print(f"BTC 4H свечей: {len(btc_df)}")
+    
+    # Загружаем BTC 1D свечи — для EMA50 master filter (без startTime/endTime, limit=200)
+    print("Загрузка BTC 1D данных для EMA50 master filter...")
+    btc_1d_df = fetch_candles_no_range("BTCUSDT", granularity="1D", limit=200)
+    print(f"BTC 1D свечей: {len(btc_1d_df)}")
+    if len(btc_1d_df) >= 50:
+        ema50 = btc_1d_df['close'].ewm(span=50, adjust=False).mean()
+        last_close = btc_1d_df['close'].iloc[-1]
+        last_ema = ema50.iloc[-1]
+        regime = "BULL (LONG allowed)" if last_close > last_ema else "BEAR (SHORT allowed)"
+        print(f"BTC 1D: close={last_close:.0f}, EMA50={last_ema:.0f} => {regime}")
     
     results = []
     for symbol in SYMBOLS:
-        res = run_symbol_backtest(symbol, btc_df=btc_df)
+        res = run_symbol_backtest(symbol, btc_df=btc_df, btc_1d_df=btc_1d_df)
         if res:
             results.append(res)
         time.sleep(1)  # rate limiting
@@ -233,7 +272,95 @@ def main():
         if btc_res and btc_res.get("debug_trades"):
             for dt in btc_res["debug_trades"][:5]:
                 print(f"    {dt}")
-    
+
+    # ── Trailing Step Distribution ──
+    print("\n" + "=" * 60)
+    print("TRAILING STEP DISTRIBUTION (все сделки)")
+    print("=" * 60)
+    total_steps = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0}
+    for res in successful:
+        sc = res.get("step_counts", {})
+        for k, v in sc.items():
+            total_steps[k] = total_steps.get(k, 0) + v
+    total_all = sum(total_steps.values())
+    if total_all > 0:
+        print(f"  Step 0 (SL без трейлинга):     {total_steps[0]:>4} ({total_steps[0]/total_all*100:.1f}%)")
+        print(f"  Step 1 (breakeven):             {total_steps[1]:>4} ({total_steps[1]/total_all*100:.1f}%)")
+        print(f"  Step 2 (partial 25%, SL+0.5R):  {total_steps[2]:>4} ({total_steps[2]/total_all*100:.1f}%)")
+        print(f"  Step 3 (partial 50%, SL+1.0R):  {total_steps[3]:>4} ({total_steps[3]/total_all*100:.1f}%)")
+        print(f"  Step 4 (full TP at +2.5R):      {total_steps[4]:>4} ({total_steps[4]/total_all*100:.1f}%)")
+        trailing_activated = total_steps[1] + total_steps[2] + total_steps[3] + total_steps[4]
+        print(f"  Trailing activated:             {trailing_activated}/{total_all} ({trailing_activated/total_all*100:.1f}%)")
+
+    # ── Winning Trades RR Analysis ──
+    print("\n" + "=" * 60)
+    print("WINNING TRADES RR ANALYSIS")
+    print("=" * 60)
+    all_win_rr = []
+    for res in successful:
+        all_win_rr.extend(res.get("win_rr_list", []))
+    if all_win_rr:
+        print(f"  Winning trades:    {len(all_win_rr)}")
+        print(f"  Avg win RR:        {np.mean(all_win_rr):.2f}")
+        print(f"  Median win RR:     {np.median(all_win_rr):.2f}")
+        print(f"  Min win RR:        {min(all_win_rr):.2f}")
+        print(f"  Max win RR:        {max(all_win_rr):.2f}")
+        # Per-symbol winning RR
+        print(f"\n  {'Symbol':<10} {'Wins':<6} {'AvgWinRR':<10} {'MaxStep':<10}")
+        print(f"  {'-'*36}")
+        for res in successful:
+            if not res.get("success"):
+                continue
+            wrr = res.get("win_rr_list", [])
+            sc = res.get("step_counts", {})
+            max_step = max((k for k, v in sc.items() if v > 0), default=0)
+            avg_wrr = np.mean(wrr) if wrr else 0.0
+            print(f"  {res['symbol']:<10} {len(wrr):<6} {avg_wrr:<10.2f} {max_step:<10}")
+    else:
+        print("  Нет прибыльных сделок")
+
+    # ── Step 4 (Full TP +2.5R) Detail ──
+    print("\n" + "=" * 60)
+    print("STEP 4 TRADES DETAIL (Full TP at +2.5R)")
+    print("=" * 60)
+    step4_trades = []
+    for res in successful:
+        sym = res["symbol"]
+        for t in res.get("raw_trades", []):
+            if getattr(t, 'trailing_step', 0) == 4:
+                init_sl = getattr(t, 'initial_sl', t.sl_price)
+                risk = abs(t.entry_price - init_sl)
+                if t.side == "long":
+                    exit_rr = (t.exit_price - t.entry_price) / risk if risk > 0 else 0
+                else:
+                    exit_rr = (t.entry_price - t.exit_price) / risk if risk > 0 else 0
+                step4_trades.append({
+                    "symbol": sym,
+                    "side": t.side,
+                    "entry": t.entry_price,
+                    "exit": t.exit_price,
+                    "sl": init_sl,
+                    "risk": risk,
+                    "exit_rr": exit_rr,
+                    "pnl_usd": t.pnl_usd,
+                    "pnl_pct": t.pnl_pct,
+                    "remaining": getattr(t, 'remaining_pct', 1.0),
+                    "partial_pnl": getattr(t, 'partial_pnl_usd', 0),
+                    "entry_time": str(getattr(t, 'entry_time', '?')),
+                })
+    if step4_trades:
+        print(f"  Всего step-4 сделок: {len(step4_trades)}\n")
+        for i, s4 in enumerate(step4_trades, 1):
+            print(f"  #{i} {s4['symbol']} {s4['side'].upper()}")
+            print(f"     Entry: {s4['entry']:.4f}  Exit: {s4['exit']:.4f}  SL: {s4['sl']:.4f}")
+            print(f"     Risk(1R): {s4['risk']:.4f}  Exit RR: {s4['exit_rr']:.2f}")
+            print(f"     PnL: ${s4['pnl_usd']:+.2f} ({s4['pnl_pct']:+.2f}%)")
+            print(f"     Partial PnL booked: ${s4['partial_pnl']:.2f}  Remaining at exit: {s4['remaining']*100:.0f}%")
+            print(f"     Entry time: {s4['entry_time']}")
+            print()
+    else:
+        print("  Нет сделок, дошедших до step 4")
+
     # Сохраняем в файл
     with open("backtest_results_full.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False, default=str)

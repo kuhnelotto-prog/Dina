@@ -1081,7 +1081,8 @@ class BitgetExecutor:
         if not pos:
             return
         close_size = round(pos.size * pct, 6)
-        close_side = "sell" if side == "LONG" else "buy"
+        side_lower = side.lower()
+        close_side = "sell" if side_lower == "long" else "buy"
         # dry-run — просто логируем
         if self.cfg.dry_run:
             logger.info(f"[DRY] partial_close {symbol} {pct*100:.0f}% size={close_size}")
@@ -1089,7 +1090,7 @@ class BitgetExecutor:
             return
         # реальный режим — рыночный ордер на закрытие
         # Используем _place_market_order с reduce_only=True
-        close_side_enum = OrderSide.SELL if side == "LONG" else OrderSide.BUY
+        close_side_enum = OrderSide.SELL if side_lower == "long" else OrderSide.BUY
         await self._place_market_order(
             symbol=symbol,
             side=close_side_enum,

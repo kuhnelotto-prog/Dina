@@ -2,6 +2,7 @@
 """
 Финальный тест фильтров с реальными данными
 """
+import time
 import asyncio
 import pandas as pd
 import numpy as np

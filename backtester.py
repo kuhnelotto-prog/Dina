@@ -54,31 +54,41 @@ END_DATE = datetime.utcnow() - timedelta(minutes=5)
 
 
 class BacktestPosition:
+    """
+    Position with 4-step trailing stop matching trailing_manager.py:
+      Step 1: +0.5R → SL to breakeven
+      Step 2: +1.0R → partial close 25%, SL to +0.5R
+      Step 3: +1.5R → partial close 25%, SL to +1.0R
+      Step 4: +2.5R → close everything
+    No floating TP — exits only via SL or step-4 full close.
+    """
     def __init__(self, symbol, side, entry_price, size_usd, sl_price, tp_price, timestamp):
         self.symbol = symbol
         self.side = side
         self.entry_price = entry_price
         self.size_usd = size_usd
         self.sl_price = sl_price
-        self.tp_price = tp_price
-        self.initial_sl = sl_price      # original SL for RR calculation
-        self.initial_tp = tp_price      # original TP
+        self.tp_price = None           # TP disabled — trailing handles exits
+        self.initial_sl = sl_price
+        self.initial_tp = tp_price     # kept for reference only
         self.entry_time = timestamp
         self.exit_time = None
         self.exit_price = None
         self.pnl_usd = 0.0
         self.pnl_pct = 0.0
         self.is_closed = False
-        # Trailing state
-        self.best_price = entry_price   # best favorable price seen
+        # 4-step trailing state (mirrors trailing_manager.py)
         self.initial_risk = abs(entry_price - sl_price)  # 1R in price units
-        self.trailing_activated = False  # True once price moved >= 1R in our favor
+        self.trailing_step = 0         # 0-4
+        self.remaining_pct = 1.0       # fraction of original size still open
+        self.partial_pnl_usd = 0.0     # accumulated PnL from partial closes
 
     def update(self, current_price, high=None, low=None):
         """
         Update position with candle data.
-        1. Check SL/TP by high/low (intra-candle)
-        2. If not closed, apply trailing stop logic using close price
+        1. Check SL hit by intra-candle high/low
+        2. Apply 4-step trailing using close price
+        Returns (closed: bool, exit_price or None)
         """
         if self.is_closed:
             return False, None
@@ -86,92 +96,119 @@ class BacktestPosition:
         candle_high = high if high is not None else current_price
         candle_low = low if low is not None else current_price
 
-        # ── Step 1: Check SL/TP hit by high/low ──
+        # ── Check SL hit ──
         if self.side == "long":
             if candle_low <= self.sl_price:
-                self._close(self.sl_price, "TSL" if self.trailing_activated else "SL")
+                reason = "TSL" if self.trailing_step > 0 else "SL"
+                self._close(self.sl_price, reason)
                 return True, self.sl_price
-            if self.tp_price and candle_high >= self.tp_price:
-                self._close(self.tp_price, "TP")
-                return True, self.tp_price
         else:  # short
             if candle_high >= self.sl_price:
-                self._close(self.sl_price, "TSL" if self.trailing_activated else "SL")
+                reason = "TSL" if self.trailing_step > 0 else "SL"
+                self._close(self.sl_price, reason)
                 return True, self.sl_price
-            if self.tp_price and candle_low <= self.tp_price:
-                self._close(self.tp_price, "TP")
-                return True, self.tp_price
 
-        # ── Step 2: Trailing stop/profit logic (using close) ──
-        self._apply_trailing(current_price, candle_high, candle_low)
+        # ── 4-step trailing (using close price) ──
+        closed = self._apply_trailing_4step(current_price)
+        if closed:
+            return True, current_price
 
         return False, None
 
-    def _apply_trailing(self, close, high, low):
+    def _apply_trailing_4step(self, close):
         """
-        Trailing logic (same ATR-based params as live bot):
-        - Track best_price (highest close for LONG, lowest close for SHORT)
-        - At +1.0R: move SL to breakeven (entry price)
-        - At +1.5R: move SL to entry + 0.5R (lock 0.5R profit)
-        - Continuous: SL trails at best_price - 1.0R (LONG) / best_price + 1.0R (SHORT)
-        - TP trails: best_price + 1.0R (LONG) / best_price - 1.0R (SHORT)
+        4-step trailing identical to trailing_manager.py:
+          Step 1 (+0.5R): SL → breakeven
+          Step 2 (+1.0R): close 25%, SL → entry + 0.5R
+          Step 3 (+1.5R): close 25%, SL → entry + 1.0R
+          Step 4 (+2.5R): close everything
+        Returns True if position fully closed (step 4).
         """
         R = self.initial_risk
         if R <= 0:
-            return
+            return False
 
+        # Calculate current R-multiple
         if self.side == "long":
-            # Update best price
-            if close > self.best_price:
-                self.best_price = close
+            r = (close - self.entry_price) / R
+        else:
+            r = (self.entry_price - close) / R
 
-            favorable_move = self.best_price - self.entry_price
+        step = self.trailing_step
 
-            if favorable_move >= 1.0 * R:
-                self.trailing_activated = True
-                # Trailing SL: best_price - 1.0R, but never below entry (breakeven)
-                new_sl = self.best_price - 1.0 * R
-                new_sl = max(new_sl, self.entry_price)  # at least breakeven
-                if new_sl > self.sl_price:
-                    self.sl_price = new_sl
+        # Step 1 — breakeven (+0.5R)
+        if step < 1 and r >= 0.5:
+            new_sl = self.entry_price
+            self.sl_price = new_sl
+            self.trailing_step = 1
+            logger.debug(f"  TSL step 1: {self.symbol} SL→breakeven {new_sl:.2f}")
 
-                # Trailing TP: best_price + 1.0R
-                new_tp = self.best_price + 1.0 * R
-                if new_tp > self.tp_price:
-                    self.tp_price = new_tp
+        # Step 2 — close 25%, SL to +0.5R
+        elif step < 2 and r >= 1.0:
+            if self.side == "long":
+                new_sl = self.entry_price + R * 0.5
+            else:
+                new_sl = self.entry_price - R * 0.5
+            self.sl_price = new_sl
+            self.trailing_step = 2
+            # Partial close 25% of current remaining
+            self._partial_close(0.25, close)
+            logger.debug(f"  TSL step 2: {self.symbol} close 25%, SL→{new_sl:.2f}")
 
-        else:  # short
-            # Update best price (lowest)
-            if close < self.best_price:
-                self.best_price = close
+        # Step 3 — close another 25%, SL to +1.0R
+        elif step < 3 and r >= 1.5:
+            if self.side == "long":
+                new_sl = self.entry_price + R * 1.0
+            else:
+                new_sl = self.entry_price - R * 1.0
+            self.sl_price = new_sl
+            self.trailing_step = 3
+            # Partial close 25% of current remaining (= 1/3 of what's left after step 2)
+            self._partial_close(1/3, close)
+            logger.debug(f"  TSL step 3: {self.symbol} close 25%, SL→{new_sl:.2f}")
 
-            favorable_move = self.entry_price - self.best_price
+        # Step 4 — close everything (+2.5R)
+        elif step < 4 and r >= 2.5:
+            self.trailing_step = 4
+            self._close(close, "TP_2.5R")
+            logger.debug(f"  TSL step 4: {self.symbol} full close at +2.5R")
+            return True
 
-            if favorable_move >= 1.0 * R:
-                self.trailing_activated = True
-                # Trailing SL: best_price + 1.0R, but never above entry (breakeven)
-                new_sl = self.best_price + 1.0 * R
-                new_sl = min(new_sl, self.entry_price)  # at least breakeven
-                if new_sl < self.sl_price:
-                    self.sl_price = new_sl
+        return False
 
-                # Trailing TP: best_price - 1.0R
-                new_tp = self.best_price - 1.0 * R
-                if new_tp < self.tp_price:
-                    self.tp_price = new_tp
+    def _partial_close(self, pct, price):
+        """Close pct of remaining position, book partial PnL."""
+        close_fraction = self.remaining_pct * pct
+        if self.side == "long":
+            pnl_pct = (price - self.entry_price) / self.entry_price * 100
+        else:
+            pnl_pct = (self.entry_price - price) / self.entry_price * 100
+        partial_pnl = self.size_usd * close_fraction * pnl_pct / 100
+        self.partial_pnl_usd += partial_pnl
+        self.remaining_pct -= close_fraction
 
     def _close(self, exit_price, reason):
         self.exit_price = exit_price
         self.exit_time = datetime.now()
         self.is_closed = True
+        self.exit_reason = reason
 
         if self.side == "long":
-            self.pnl_pct = (exit_price - self.entry_price) / self.entry_price * 100
+            exit_pnl_pct = (exit_price - self.entry_price) / self.entry_price * 100
         else:
-            self.pnl_pct = (self.entry_price - exit_price) / self.entry_price * 100
+            exit_pnl_pct = (self.entry_price - exit_price) / self.entry_price * 100
 
-        self.pnl_usd = self.size_usd * self.pnl_pct / 100
-        logger.info(f"Position closed: {self.symbol} {self.side} | PnL: {self.pnl_usd:+.2f}$ ({self.pnl_pct:+.2f}%)")
+        # PnL = partial closes already booked + remaining fraction at exit
+        remaining_pnl = self.size_usd * self.remaining_pct * exit_pnl_pct / 100
+        self.pnl_usd = self.partial_pnl_usd + remaining_pnl
+        self.pnl_pct = self.pnl_usd / self.size_usd * 100 if self.size_usd else 0
+
+        step_info = f" step={self.trailing_step}" if self.trailing_step > 0 else ""
+        logger.info(
+            f"Position closed: {self.symbol} {self.side} [{reason}]{step_info} | "
+            f"PnL: {self.pnl_usd:+.2f}$ ({self.pnl_pct:+.2f}%) "
+            f"remaining={self.remaining_pct*100:.0f}%"
+        )
 
 
 class BacktestResult:
@@ -247,11 +284,12 @@ class Backtester:
         self.use_real_data = use_real_data
         self.result = None
 
-    def run(self, df=None, symbol="BTCUSDT", btc_df=None):
+    def run(self, df=None, symbol="BTCUSDT", btc_df=None, btc_1d_df=None):
         """
         Run backtest on provided DataFrame.
         If df is None, generates synthetic or real data.
-        btc_df: optional BTC DataFrame for regime detection on non-BTC symbols.
+        btc_df: optional BTC 4H DataFrame for regime detection on non-BTC symbols.
+        btc_1d_df: optional BTC 1D DataFrame for EMA50 master filter.
         Returns BacktestResult.
         """
         if df is None:
@@ -259,7 +297,7 @@ class Backtester:
                 df = self._fetch_real_data(symbol)
             else:
                 df = self._generate_test_data(symbol)
-        self.result = self._run_backtest(df, symbol, btc_df=btc_df)
+        self.result = self._run_backtest(df, symbol, btc_df=btc_df, btc_1d_df=btc_1d_df)
         return self.result
 
     def _generate_test_data(self, symbol):
@@ -388,7 +426,7 @@ class Backtester:
             logger.warning(f"Expected ~{expected} candles for 90 days at 4h, but got {len(df)}. Data may be incomplete or overlapping.")
         return df
 
-    def _run_backtest(self, df, symbol, btc_df=None):
+    def _run_backtest(self, df, symbol, btc_df=None, btc_1d_df=None):
         """Core backtest logic — uses IndicatorsCalculator + composite score."""
         result = BacktestResult(self.initial_balance)
         open_positions = {}
@@ -418,7 +456,7 @@ class Backtester:
         THRESHOLD_SHORT_BULL = 0.45   # BTC bullish → SHORT консервативнее
         THRESHOLD_SHORT_BEAR = 0.30   # BTC bearish → SHORT агрессивнее
 
-        # Precompute BTC EMA50 for regime detection
+        # Precompute BTC EMA50 for regime detection (4H)
         btc_ema50 = None
         if symbol == "BTCUSDT":
             close_series = df['close']
@@ -426,6 +464,14 @@ class Backtester:
         elif btc_df is not None and len(btc_df) >= 50:
             btc_close = btc_df['close']
             btc_ema50 = btc_close.ewm(span=50, adjust=False).mean()
+
+        # ── BTC 1D EMA50 Master Filter ──
+        btc_1d_ema50 = None
+        if btc_1d_df is not None and len(btc_1d_df) >= 50:
+            btc_1d_ema50 = btc_1d_df['close'].ewm(span=50, adjust=False).mean()
+            logger.info(f"BTC 1D EMA50 master filter ENABLED ({len(btc_1d_df)} daily candles)")
+        else:
+            logger.info("BTC 1D EMA50 master filter DISABLED (no 1D data)")
 
         for i, (timestamp, row) in enumerate(df.iterrows()):
             if i % 50 == 0:
@@ -486,8 +532,23 @@ class Backtester:
                 is_bullish = indicators["ema_fast"] > indicators["ema_slow"]
                 rsi = indicators.get("rsi", 50)
 
+                # ── BTC 1D EMA50 Master Filter ──
+                # LONG only if BTC > EMA50(1D), SHORT only if BTC < EMA50(1D)
+                btc_1d_allows_long = True
+                btc_1d_allows_short = True
+                if btc_1d_ema50 is not None:
+                    try:
+                        idx_1d = btc_1d_ema50.index.get_indexer([timestamp], method='pad')[0]
+                        if idx_1d >= 0:
+                            btc_1d_close = btc_1d_df['close'].iloc[idx_1d]
+                            btc_1d_ema_val = btc_1d_ema50.iloc[idx_1d]
+                            btc_1d_allows_long = btc_1d_close > btc_1d_ema_val
+                            btc_1d_allows_short = btc_1d_close < btc_1d_ema_val
+                    except Exception:
+                        pass  # fallback: allow both
+
                 # ── LONG entry ──
-                if composite > threshold_long and is_bullish and rsi < 70:
+                if composite > threshold_long and is_bullish and rsi < 70 and btc_1d_allows_long:
                     atr_pct = indicators.get("atr_pct", 0)
                     if atr_pct > 0.1:
                         sl_pct = 1.5 * atr_pct / 100
@@ -512,7 +573,7 @@ class Backtester:
                     logger.info(f"Opened LONG: {symbol} | Price: {current_price:.2f} | Score: {composite:.3f}")
 
                 # ── SHORT entry ──
-                elif composite < -threshold_short and not is_bullish and rsi > 30:
+                elif composite < -threshold_short and not is_bullish and rsi > 30 and btc_1d_allows_short:
                     atr_pct = indicators.get("atr_pct", 0)
                     if atr_pct > 0.1:
                         sl_pct = 1.5 * atr_pct / 100
