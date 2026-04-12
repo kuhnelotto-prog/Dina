@@ -140,6 +140,9 @@ class Orchestrator:
         learning_engine = LearningEngine()
         await learning_engine.setup()
 
+        # Connect learning_engine to risk_manager for emergency reset
+        self.risk_manager.learning_engine = learning_engine
+
         # SignalBuilders (shared cooldown)
         shared_signal_time: Dict[str, float] = {}
 

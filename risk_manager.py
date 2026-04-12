@@ -56,8 +56,10 @@ class RiskManager:
         max_open_positions: int = 1,
         daily_loss_limit: float = 5.0,
         max_total_exposure_usd: float = 5000.0,
+        learning_engine=None,
     ):
         self.sizer = PositionSizer(sizer_config or SizerConfig())
+        self.learning_engine = learning_engine  # Optional[LearningEngine]
         self.max_open_positions = max_open_positions
         self.daily_loss_limit = daily_loss_limit
         self.max_total_exposure_usd = max_total_exposure_usd
@@ -190,6 +192,15 @@ class RiskManager:
 
         if size_result.decision == SizerDecision.HALT:
             state = DrawdownState.EMERGENCY if portfolio.drawdown_pct >= self.sizer.cfg.drawdown_halt_pct else DrawdownState.DEGRADED
+
+            # 3.3: Emergency reset weights on HALT
+            if self.learning_engine is not None:
+                dd = portfolio.drawdown_pct
+                cl = portfolio.consecutive_losses
+                self.learning_engine.reset_to_defaults(
+                    f"HALT: dd={dd:.1f}% losses={cl}"
+                )
+
             return RiskStatus(
                 allowed=False,
                 state=state,
