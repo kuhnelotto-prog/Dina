@@ -99,10 +99,12 @@ class OrderManager:
             if not order_id:
                 return OrderResult(success=False, error=f"No order_id: {resp}")
 
-            # 2. Wait fill
-            filled_price = await self.api.wait_fill(order_id, symbol)
+            # 2. Wait fill (returns tuple: price, commission)
+            fill_result = await self.api.wait_fill(order_id, symbol)
+            filled_price, entry_commission = fill_result
             if not filled_price:
                 filled_price = req.entry_price
+                entry_commission = 0.0
 
             # 3. SL
             sl_id = await self.api.place_sl(
@@ -130,6 +132,7 @@ class OrderManager:
                 sl_order_id=sl_id,
                 tp_order_id=tp_id,
                 trade_id=trade_id,
+                commission=entry_commission,
             )
 
             # Save position
@@ -186,7 +189,12 @@ class OrderManager:
                 reduce_only=True,
             )
             order_id = resp.get("data", {}).get("orderId", "")
-            filled_price = await self.api.wait_fill(order_id, symbol) if order_id else pos.avg_price
+            close_commission = 0.0
+            if order_id:
+                fill_result = await self.api.wait_fill(order_id, symbol)
+                filled_price, close_commission = fill_result
+            else:
+                filled_price = pos.avg_price
 
             result = OrderResult(
                 success=True,
@@ -194,6 +202,7 @@ class OrderManager:
                 filled_price=filled_price or pos.avg_price,
                 filled_size=pos.size,
                 trade_id=pos.trade_id,
+                commission=close_commission,
             )
             pos.side = PositionSide.NONE
             pos.size = 0

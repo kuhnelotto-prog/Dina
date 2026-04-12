@@ -112,6 +112,8 @@ class OrderResult:
     dry_run: bool = False
     timestamp: float = field(default_factory=time.time)
     trade_id: str = ""
+    commission: float = 0.0
+    commission_asset: str = "USDT"
 
     def __str__(self):
         if not self.success:

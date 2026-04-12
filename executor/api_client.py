@@ -333,8 +333,11 @@ class BitgetAPIClient:
             logger.error(f"Failed to get positions: {e}")
             return []
 
-    async def wait_fill(self, order_id: str, symbol: str, timeout: float = 5.0) -> Optional[float]:
-        """Ожидает исполнения ордера. Возвращает цену или None."""
+    async def wait_fill(self, order_id: str, symbol: str, timeout: float = 5.0) -> tuple:
+        """
+        Ожидает исполнения ордера.
+        Returns: (filled_price, commission) — tuple(float|None, float)
+        """
         import time
         from pybitget_client import OrderApi
         deadline = time.time() + timeout
@@ -354,13 +357,16 @@ class BitgetAPIClient:
                 status = data.get("status", "")
                 if status == "filled":
                     price = float(data.get("priceAvg", 0) or 0)
-                    return price if price else None
+                    # Извлекаем комиссию из ответа биржи
+                    fee = abs(float(data.get("fee", 0) or data.get("commission", 0) or 0))
+                    logger.info(f"Order {order_id} filled @ {price}, fee={fee}")
+                    return (price if price else None, fee)
                 if status in ("cancelled", "failed"):
-                    return None
+                    return (None, 0.0)
             except Exception:
                 pass
             await asyncio.sleep(0.5)
-        return None
+        return (None, 0.0)
 
     async def get_active_sl(self, symbol: str) -> str:
         """Получает ID активного SL план-ордера."""
