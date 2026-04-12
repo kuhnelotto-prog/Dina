@@ -71,11 +71,12 @@ class RiskManager:
         self._candle_cache: Dict[str, pd.DataFrame] = {}
 
         # Секторные группы (единый источник правды для всех проверок)
+        # Обновлено после бэктестов: оставлены только прибыльные монеты
         self.SECTOR_GROUPS = {
-            "L1": ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT"],
-            "DeFi": ["LINKUSDT", "UNIUSDT"],
+            "L1": ["BTCUSDT", "ETHUSDT"],
+            "DeFi": ["LINKUSDT"],
             "Meme": ["DOGEUSDT"],
-            "Alt_L1": ["BNBUSDT", "ADAUSDT", "XRPUSDT"],
+            "Alt_L1": ["XRPUSDT"],
         }
 
         # Кэш корреляций секторов (обновляется раз в цикл)
