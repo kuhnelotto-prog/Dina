@@ -211,9 +211,27 @@ class LearningEngine:
             new_weights = dict(self._weights.weights)
 
             # --- 3.2: Disable sources with insufficient trades ---
+            # Count how many sources have enough trades
+            sources_with_enough = sum(
+                1 for pnl_list in source_pnl.values()
+                if len(pnl_list) >= self.min_trades_per_source
+            )
+
+            # Only disable individual sources if at least ONE source has enough trades.
+            # If NO source has enough → keep DEFAULT_WEIGHTS (insufficient data for adaptation).
+            if sources_with_enough == 0:
+                logger.info(
+                    f"LearningEngine: no source has >= {self.min_trades_per_source} trades yet, "
+                    f"keeping DEFAULT_WEIGHTS (max per source: "
+                    f"{max(len(v) for v in source_pnl.values()) if source_pnl else 0})"
+                )
+                self._disabled_sources.clear()
+                self._stats.trades_since_update = 0
+                return
+
             for src, pnl_list in source_pnl.items():
                 if len(pnl_list) < self.min_trades_per_source:
-                    # Disable source
+                    # Disable source — only when other sources ARE active
                     new_weights[src] = 0.0
                     if src not in self._disabled_sources:
                         self._disabled_sources.add(src)
