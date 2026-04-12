@@ -37,6 +37,9 @@ ENTRY_THRESHOLD_SHORT_BEAR = 0.30     # bearish → агрессивнее
 FUNDING_EXTREME_THRESHOLD = 0.0005  # 0.05% за 8 часов = ~0.15%/день
 FUNDING_PENALTY = 0.05              # +0.05 к порогу входа
 
+# Trade cooldown: минимальное время между входами в один и тот же символ
+COOLDOWN_SECONDS = 4 * 3600  # 4 часа
+
 
 class StrategistClient:
     def __init__(
@@ -75,6 +78,7 @@ class StrategistClient:
         self._running = True
         self._paused = False
         self._active_trades: Dict[str, str] = {}  # symbol -> trade_id
+        self._last_trade_time: Dict[str, float] = {}  # symbol -> timestamp последнего входа
 
         # Подписываемся на команды
         self.bus.subscribe(EventType.BOT_COMMAND, self._on_command)
@@ -177,6 +181,20 @@ class StrategistClient:
         if price <= 0:
             return
 
+        # ── Trade Cooldown ──
+        # Проверяем ТОЛЬКО при открытии новой позиции.
+        # Trailing/stage/partial close не затрагивают cooldown.
+        import time as _time
+        last_trade = self._last_trade_time.get(symbol, 0)
+        elapsed = _time.time() - last_trade
+        if elapsed < COOLDOWN_SECONDS:
+            remaining_min = (COOLDOWN_SECONDS - elapsed) / 60
+            logger.debug(
+                f"[{self.direction}] {symbol}: cooldown active, "
+                f"{remaining_min:.0f} min remaining"
+            )
+            return
+
         # ── SL/TP по ATR ──
         atr_pct = signal.get("atr_pct", 1.0)
         sl_pct = atr_pct * 1.5
@@ -269,6 +287,10 @@ class StrategistClient:
 
             # RiskManager
             self.risk_manager.on_trade_opened(symbol, size_usd, side, direction=self.direction)
+
+            # Cooldown: записываем время входа
+            self._last_trade_time[symbol] = _time.time()
+
             logger.info(f"[{self.direction}] {symbol}: position opened | trade_id={trade_id} | size=${size_usd:.0f}")
         else:
             logger.error(f"[{self.direction}] {symbol}: failed to open — {result.error}")
