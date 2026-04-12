@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 
 from position_sizer import PositionSizer, PortfolioState, SizerConfig, SizerDecision, SizeResult
+from market_regime import MarketRegimeDetector, MarketRegime
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,9 @@ class RiskManager:
         self._corr_cache_ts: float = 0.0
         self._corr_cache_ttl: float = 3600.0  # обновлять раз в час
 
+        # MarketRegimeDetector
+        self.regime_detector = MarketRegimeDetector()
+
         logger.info(f"RiskManager init | max_pos={max_open_positions} | daily_loss_limit={daily_loss_limit}% | total_exposure_limit=${max_total_exposure_usd}")
 
     # ============================================================
@@ -152,7 +156,27 @@ class RiskManager:
                 reason="Correlation limit exceeded (same sector already open)"
             )
 
-                # 5. Расчёт размера через PositionSizer (учитывает просадку, серию, vol, conf)
+        # 4.5. Проверка рыночного режима (MarketRegimeDetector)
+        btc_regime = self.regime_detector.detect("BTCUSDT")
+        symbol_regime = self.regime_detector.detect(symbol) if symbol != "BTCUSDT" else btc_regime
+
+        if btc_regime == MarketRegime.CRISIS:
+            return RiskStatus(
+                allowed=False,
+                state=DrawdownState.EMERGENCY,
+                reason=f"🛑 Market in CRISIS mode (BTC BEAR + ATR > 2× avg)"
+            )
+
+        # Флаг для снижения размера при VOLATILE
+        volatile_multiplier = 1.0
+        if btc_regime == MarketRegime.VOLATILE or symbol_regime == MarketRegime.VOLATILE:
+            volatile_multiplier = 0.7
+            logger.info(
+                f"RiskManager: VOLATILE regime detected (BTC={btc_regime.value}, "
+                f"{symbol}={symbol_regime.value}) → size ×0.7"
+            )
+
+        # 5. Расчёт размера через PositionSizer (учитывает просадку, серию, vol, conf)
         size_result = self.sizer.calculate(
             portfolio=portfolio,
             entry_price=entry_price,
@@ -190,6 +214,15 @@ class RiskManager:
                 old_size = size_result.position_usd
                 size_result.position_usd = old_size * corr_mult
                 logger.info(f"RiskManager: {corr_reason} | size ${old_size:.0f} → ${size_result.position_usd:.0f}")
+
+        # 6.5. Применяем volatile_multiplier если рынок волатильный
+        if volatile_multiplier < 1.0:
+            old_size = size_result.position_usd
+            size_result.position_usd = old_size * volatile_multiplier
+            logger.info(
+                f"RiskManager: volatile adjustment ${old_size:.0f} → ${size_result.position_usd:.0f} "
+                f"(×{volatile_multiplier})"
+            )
 
         # 7. Всё прошло
         return RiskStatus(
