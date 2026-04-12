@@ -60,13 +60,14 @@ class BotState(str, Enum):
 class DinaBot:
     def __init__(
         self,
-        config: TelegramConfig = None,
+        config: Optional[TelegramConfig] = None,
         strategist=None,
         risk_manager=None,
         portfolio=None,
         executor=None,
         attribution=None,
-        symbols=None,          # <-- добавлено
+        symbols=None,
+        main_loop: Optional[asyncio.AbstractEventLoop] = None,
     ):
         self.cfg = config or TelegramConfig()
         self.strategist = strategist
@@ -74,16 +75,18 @@ class DinaBot:
         self.portfolio = portfolio
         self.executor = executor
         self.attribution = attribution
-        self.symbols = symbols or []   # <-- сохранено
+        self.symbols = symbols or []
         self.state = BotState.RUNNING
         self._app: Optional[Application] = None
         self._owner_chat_id: Optional[int] = None
+        self._main_loop = main_loop
+        self._stop_event: Optional[asyncio.Event] = None
+        self._tg_loop = None
 
         # Буфер для ночных сообщений
         self._night_buffer: List[dict] = []
         self._night_mode = False
-        
-                # Если есть allowed_ids, берём первый как владельца для уведомлений
+
         if self.cfg.allowed_ids:
             self._owner_chat_id = next(iter(self.cfg.allowed_ids))
 
@@ -118,18 +121,49 @@ class DinaBot:
         logger.info("DinaBot: handlers registered")
 
     async def run(self):
-        # Всегда создаём новый экземпляр приложения
-        self._app = None
+        self._stop_event = asyncio.Event()
         await self.setup()
         logger.info("DinaBot: starting polling...")
+
         try:
-            await self._app.run_polling(drop_pending_updates=True)
+            # Инициализируем приложение без запуска собственного event loop
+            await self._app.initialize()
+            await self._app.start()
+            # Запускаем polling через updater (не блокирует event loop)
+            await self._app.updater.start_polling(drop_pending_updates=True)
+            logger.info("DinaBot: polling started ✅")
+
+            # Ждём сигнала остановки
+            await self._stop_event.wait()
+
         except asyncio.CancelledError:
             logger.info("DinaBot: polling cancelled")
         except Exception as e:
-            logger.error(f"DinaBot: polling error: {e}", exc_info=True)
+            logger.error(f"DinaBot: polling error: {e}")
         finally:
-            logger.info("DinaBot stopped")
+            try:
+                if self._app.updater.running:
+                    await self._app.updater.stop()
+                if self._app.running:
+                    await self._app.stop()
+                await self._app.shutdown()
+            except Exception as e:
+                logger.debug(f"DinaBot: cleanup error: {e}")
+
+    def run_sync(self):
+        """Синхронная версия run() для запуска в отдельном потоке."""
+        asyncio.run(self.run())
+
+    # ============================================================
+    # Вспомогательный метод для отправки сообщений с экранированием
+    # ============================================================
+
+    async def _reply(self, update: Update, text: str, **kwargs):
+        """Отправляет ответ с экранированным текстом."""
+        if update.message is None:
+            return
+        escaped = self._escape(text)
+        await update.message.reply_text(escaped, parse_mode=ParseMode.MARKDOWN_V2, **kwargs)
 
     # ============================================================
     # Middleware
@@ -138,19 +172,23 @@ class DinaBot:
     def _is_allowed(self, update: Update) -> bool:
         if not self.cfg.allowed_ids:
             return True
+        if update.effective_chat is None:
+            return False
         chat_id = update.effective_chat.id
         return chat_id in self.cfg.allowed_ids
 
     async def _guard(self, update: Update) -> bool:
+        if update.message is None:
+            return False
         if not self._is_allowed(update):
             await update.message.reply_text("⛔ Доступ запрещён.")
             return False
-        if self._owner_chat_id is None:
+        if self._owner_chat_id is None and update.effective_chat is not None:
             self._owner_chat_id = update.effective_chat.id
         return True
 
     # ============================================================
-    # Команды
+    # Команды (все используют _reply с экранированием)
     # ============================================================
 
     async def _cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -171,15 +209,49 @@ class DinaBot:
             f"/setlimit 3.0 — дневной лимит потерь %\n"
             f"/attribution — P&L по источникам сигналов"
         )
-        await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN_V2)
+        await self._reply(update, text)
 
     async def _cmd_status(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
             return
-        await update.message.reply_text(await self._build_status(), parse_mode=ParseMode.MARKDOWN_V2)
+        
+        # Временная команда для отладки - показывает состояние оркестратора
+        from orchestrator import Orchestrator
+        import time
+        
+        # Получаем текущий оркестратор (глобальный экземпляр)
+        # В реальной системе нужно передавать ссылку на оркестратор
+        # Для простоты создаем временный статус
+        uptime = time.monotonic() - getattr(self, '_start_time', time.monotonic())
+        
+        # Пытаемся получить информацию о свечах и позициях если доступно
+        candle_count = 0
+        pos_count = 0
+        monitor_status = "❌ неизвестно"
+        
+        # Если есть доступ к оркестратору через self.strategist или другие ссылки
+        if hasattr(self, 'strategist') and hasattr(self.strategist, '_orchestrator'):
+            orch = self.strategist._orchestrator
+            if hasattr(orch, 'data_feed') and hasattr(orch.data_feed, '_candle_buf'):
+                candle_count = sum(len(buf) for buf in orch.data_feed._candle_buf.values())
+            if hasattr(orch, '_last_known_positions'):
+                pos_count = len(orch._last_known_positions)
+            if hasattr(orch, '_monitor_running'):
+                monitor_status = "✅ запущен" if orch._monitor_running else "❌ остановлен"
+        
+        text = f"""
+✅ Дина работает
+Аптайм: {int(uptime/60)} мин
+Свечей в кэше: {candle_count}
+Открыто позиций: {pos_count}
+Монитор: {monitor_status}
+        """
+        await self._reply(update, text)
 
     async def _cmd_history(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
+            return
+        if update.message is None:
             return
         trades = await self._load_trades(limit=10)
         if not trades:
@@ -193,17 +265,19 @@ class DinaBot:
             sign = "+" if pnl >= 0 else ""
             exit_r = t.get("exit_reason", "?")
             lines.append(f"{ts} {side} @{t['entry_price']:.1f}→{t['exit_price']:.1f} \\| {sign}{pnl:.2f}$ \\[{exit_r}\\]")
-        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN_V2)
+        await self._reply(update, "\n".join(lines))
 
     async def _cmd_pnl(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
             return
         stats = await self._calc_pnl_stats()
         text = self._format_pnl(stats)
-        await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN_V2)
+        await self._reply(update, text)
 
     async def _cmd_pause(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
+            return
+        if update.message is None:
             return
         if self.state == BotState.PAUSED:
             await update.message.reply_text("Уже на паузе.")
@@ -211,35 +285,29 @@ class DinaBot:
         self.state = BotState.PAUSED
         if self.strategist:
             self.strategist._paused = True
-        await update.message.reply_text(
-            "🟡 Торговля приостановлена\n"
-            "Открытые позиции не закрываются.\n"
-            "/resume — возобновить",
-            parse_mode=ParseMode.MARKDOWN_V2,
-        )
+        await self._reply(update, "🟡 Торговля приостановлена\nОткрытые позиции не закрываются.\n/resume — возобновить")
 
     async def _cmd_resume(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
             return
+        if update.message is None:
+            return
         if self.state == BotState.HALTED:
-            await update.message.reply_text(
-                "🔴 Бот в HALT по риск-менеджеру. Исправь проблему и перезапусти бота.",
-                parse_mode=ParseMode.MARKDOWN_V2,
-            )
+            await update.message.reply_text("🔴 Бот в HALT по риск-менеджеру. Исправь проблему и перезапусти бота.")
             return
         self.state = BotState.RUNNING
         if self.strategist:
             self.strategist._paused = False
-        await update.message.reply_text("🟢 Торговля возобновлена", parse_mode=ParseMode.MARKDOWN_V2)
+        await self._reply(update, "🟢 Торговля возобновлена")
 
     async def _cmd_close(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
             return
-        # Проверяем, есть ли открытые позиции
+        if update.message is None:
+            return
         if not self.executor or not self.executor._positions:
             await update.message.reply_text("Нет открытых позиций для закрытия.")
             return
-        # Берём первый символ из открытых позиций
         first_symbol = next(iter(self.executor._positions.keys()))
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ Закрыть", callback_data=f"close_{first_symbol}"),
@@ -247,28 +315,28 @@ class DinaBot:
         ])
         await update.message.reply_text(
             f"⚠️ Закрыть позицию {first_symbol}?\nОрдер будет исполнен по рынку.",
-            parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=keyboard,
         )
 
     async def _cmd_risk(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
             return
+        if update.message is None:
+            return
         if not self.risk_manager:
             await update.message.reply_text("RiskManager не подключён.")
             return
         text = self.risk_manager.status_str(self.portfolio)
-        await update.message.reply_text(self._escape(text), parse_mode=ParseMode.MARKDOWN_V2)
+        await self._reply(update, text)
 
     async def _cmd_setlimit(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
             return
+        if update.message is None:
+            return
         args = ctx.args
         if not args:
-            await update.message.reply_text(
-                f"Использование: /setlimit 3.0\nТекущий лимит: {self.risk_manager.daily_loss_limit if self.risk_manager else '?'}%",
-                parse_mode=ParseMode.MARKDOWN_V2,
-            )
+            await update.message.reply_text(f"Использование: /setlimit 3.0\nТекущий лимит: {self.risk_manager.daily_loss_limit if self.risk_manager else '?'}%")
             return
         try:
             new_limit = float(args[0])
@@ -286,11 +354,13 @@ class DinaBot:
     async def _cmd_attribution(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not await self._guard(update):
             return
+        if update.message is None:
+            return
         if not self.attribution:
             await update.message.reply_text("Attribution не подключён.")
             return
         report = await self.attribution.get_report(days=30)
-        await update.message.reply_text(self._escape(report), parse_mode=ParseMode.MARKDOWN_V2)
+        await self._reply(update, report)
 
     # ============================================================
     # Inline callback
@@ -298,7 +368,11 @@ class DinaBot:
 
     async def _on_callback(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
+        if query is None:
+            return
         await query.answer()
+        if query.data is None:
+            return
         if query.data.startswith("close_"):
             symbol = query.data.split("_")[1]
             if not self.executor:
@@ -316,6 +390,8 @@ class DinaBot:
     async def _on_text(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_allowed(update):
             return
+        if update.message is None:
+            return
         await update.message.reply_text("Используй команды: /status /history /pnl /pause /resume")
 
     # ============================================================
@@ -324,15 +400,14 @@ class DinaBot:
 
     async def _send(self, text: str, priority: str = "normal"):
         """Отправляет сообщение с учётом ночного режима и приоритета."""
+        text = self._escape(text)   # принудительное экранирование
         if not self._owner_chat_id or not self._app:
             logger.warning(f"DinaBot: нет получателя для алерта: {text[:60]}")
             return
 
-        # Определяем, ночь ли сейчас (UTC)
         now = time.gmtime()
         is_night = (now.tm_hour >= self.cfg.silent_start_hour or now.tm_hour < self.cfg.silent_end_hour)
 
-        # Приоритеты: critical и high всегда идут сразу, остальные в ночное время буферизуются
         if priority in ("critical", "high") or not is_night:
             await self._app.bot.send_message(
                 chat_id=self._owner_chat_id,
@@ -340,14 +415,11 @@ class DinaBot:
                 parse_mode=ParseMode.MARKDOWN_V2,
             )
         else:
-            # Буферизуем для утренней сводки
             self._night_buffer.append({"text": text, "priority": priority})
-            # Если это первый буфер, запускаем таймер на утро
             if len(self._night_buffer) == 1:
                 asyncio.create_task(self._send_night_summary())
 
     async def _send_night_summary(self):
-        """Отправляет накопленные за ночь сообщения утром."""
         now = time.gmtime()
         seconds_until_morning = ( (self.cfg.silent_end_hour - now.tm_hour) % 24 ) * 3600 - now.tm_min * 60 - now.tm_sec
         await asyncio.sleep(seconds_until_morning + 10)
@@ -360,11 +432,15 @@ class DinaBot:
             )
             self._night_buffer.clear()
 
-    async def alert_signal(self, direction: str, entry_price: float, sl_price: float, tp_price: float, confidence: float, reason: str = ""):
+    # ============================================================
+    # Алерты
+    # ============================================================
+
+    async def alert_signal(self, symbol: str, direction: str, entry_price: float, sl_price: float, tp_price: float, confidence: float, reason: str = ""):
         side_emoji = "🟢 LONG" if direction == "long" else "🔴 SHORT"
         rr = abs(tp_price - entry_price) / abs(entry_price - sl_price) if entry_price != sl_price else 0
         text = (
-            f"📡 Сигнал — {side_emoji}\n\n"
+            f"📡 Сигнал — {side_emoji} | {symbol}\n\n"
             f"Вход:  {entry_price:.2f}\n"
             f"SL:    {sl_price:.2f} ({abs(entry_price-sl_price)/entry_price*100:.2f}%)\n"
             f"TP:    {tp_price:.2f} ({abs(tp_price-entry_price)/entry_price*100:.2f}%)\n"
@@ -372,14 +448,14 @@ class DinaBot:
             f"Conf:  {confidence:.0%}"
         )
         if reason:
-            text += f"\n_{self._escape(reason)}"
+            text += f"\n_{reason}"
         await self._send(text, priority="normal")
 
-    async def alert_opened(self, direction: str, filled_price: float, size_usd: float, sl_price: float, tp_price: float, dry_run: bool = False):
-        tag = " \\[DRY RUN\\]" if dry_run else ""
+    async def alert_opened(self, symbol: str, direction: str, filled_price: float, size_usd: float, sl_price: float, tp_price: float, dry_run: bool = False):
+        tag = " [DRY RUN]" if dry_run else ""
         side = "🟢 LONG" if direction == "long" else "🔴 SHORT"
         text = (
-            f"✅ Позиция открыта{tag} — {side}\n\n"
+            f"✅ Позиция открыта{tag} — {side} | {symbol}\n\n"
             f"Цена входа: {filled_price:.2f}\n"
             f"Размер:     ${size_usd:,.0f}\n"
             f"SL:         {sl_price:.2f}\n"
@@ -387,14 +463,14 @@ class DinaBot:
         )
         await self._send(text, priority="high")
 
-    async def alert_closed(self, direction: str, entry_price: float, exit_price: float, pnl_usd: float, pnl_pct: float, reason: str, dry_run: bool = False):
-        tag = " \\[DRY RUN\\]" if dry_run else ""
+    async def alert_closed(self, symbol: str, direction: str, entry_price: float, exit_price: float, pnl_usd: float, pnl_pct: float, reason: str, dry_run: bool = False):
+        tag = " [DRY RUN]" if dry_run else ""
         sign = "+" if pnl_usd >= 0 else ""
         emoji = "🎉" if pnl_usd >= 0 else "😔"
         reason_map = {"sl": "SL", "tp": "TP ✨", "signal": "сигнал", "manual": "вручную", "timeout": "таймаут"}
         r_str = reason_map.get(reason, reason)
         text = (
-            f"{emoji} Позиция закрыта{tag}\n\n"
+            f"{emoji} Позиция закрыта{tag} | {symbol}\n\n"
             f"Выход:  {r_str}\n"
             f"Вход:   {entry_price:.2f} → {exit_price:.2f}\n"
             f"P&L:   {sign}{pnl_usd:.2f}$ ({sign}{pnl_pct:.2f}%)"
@@ -411,10 +487,9 @@ class DinaBot:
         await self._send(text, priority="critical" if state == "EMERGENCY" else "high")
 
     async def alert_error(self, message: str):
-        await self._send(f"🆘 Ошибка\n\n{self._escape(message)}", priority="critical")
+        await self._send(f"🆘 Ошибка\n\n{message}", priority="critical")
 
     async def alert_daily_summary(self):
-        """Ежедневный итог."""
         if not self.portfolio:
             return
         trades = await self._load_trades(since_hours=24)
@@ -439,8 +514,8 @@ class DinaBot:
     async def _build_status(self) -> str:
         state_emoji = {BotState.RUNNING: "🟢 RUNNING", BotState.PAUSED: "🟡 PAUSED", BotState.HALTED: "🔴 HALTED"}
         lines = [f"Статус: {state_emoji[self.state]}\n"]
-        if self.executor and self.symbols:   # <-- исправлено
-            pos = await self.executor.get_position(self.symbols[0])   # <-- исправлено
+        if self.executor and self.symbols:
+            pos = await self.executor.get_position(self.symbols[0])
             if pos.is_open:
                 pnl_sign = "+" if pos.unrealized_pnl >= 0 else ""
                 lines.append(
@@ -519,9 +594,19 @@ class DinaBot:
             "worst_trade": min(pnls) if pnls else 0,
         }
 
+    # ============================================================
+    # Экранирование спецсимволов Telegram
+    # ============================================================
+
     @staticmethod
     def _escape(text: str) -> str:
-        specials = r"*[]()~`>#+-=|{}.!"
+        """Экранирует спецсимволы Telegram MarkdownV2."""
+        specials = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
         for ch in specials:
-            text = text.replace(ch, f"\\{ch}")
-        return text    
+            text = text.replace(ch, f'\\{ch}')
+        return text
+
+    def stop(self):
+        """Вызывается из оркестратора (из любого потока)."""
+        if self._stop_event and self._tg_loop:
+            self._tg_loop.call_soon_threadsafe(self._stop_event.set)

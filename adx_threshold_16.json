@@ -1,0 +1,118 @@
+{
+  "threshold": 16,
+  "total_trades": 100,
+  "avg_win_rate": 33.946909571909565,
+  "total_pnl_usd": -628.6739391135026,
+  "avg_pnl_pct": -0.5238949492612542,
+  "avg_maxdd_pct": 1.325453745545713,
+  "results": [
+    {
+      "symbol": "BTCUSDT",
+      "total_trades": 8,
+      "win_rate": 37.5,
+      "total_pnl_usd": -90.88974989977322,
+      "total_pnl_pct": -0.9088974989977032,
+      "max_drawdown_pct": 1.051037003873593,
+      "success": true
+    },
+    {
+      "symbol": "ETHUSDT",
+      "total_trades": 7,
+      "win_rate": 28.57142857142857,
+      "total_pnl_usd": -76.99006212029809,
+      "total_pnl_pct": -0.7699006212029963,
+      "max_drawdown_pct": 1.348405203759594,
+      "success": true
+    },
+    {
+      "symbol": "SOLUSDT",
+      "total_trades": 9,
+      "win_rate": 22.22222222222222,
+      "total_pnl_usd": -213.42686446979235,
+      "total_pnl_pct": -2.1342686446979315,
+      "max_drawdown_pct": 2.1342686446979315,
+      "success": true
+    },
+    {
+      "symbol": "BNBUSDT",
+      "total_trades": 11,
+      "win_rate": 54.54545454545454,
+      "total_pnl_usd": 24.487649116302265,
+      "total_pnl_pct": 0.24487649116303145,
+      "max_drawdown_pct": 0.6305934387829017,
+      "success": true
+    },
+    {
+      "symbol": "XRPUSDT",
+      "total_trades": 8,
+      "win_rate": 50.0,
+      "total_pnl_usd": 249.8059711279605,
+      "total_pnl_pct": 2.4980597112796024,
+      "max_drawdown_pct": 0.6330454636015368,
+      "success": true
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "total_trades": 10,
+      "win_rate": 30.0,
+      "total_pnl_usd": -66.49981414025892,
+      "total_pnl_pct": -0.6649981414025934,
+      "max_drawdown_pct": 1.8453299861941421,
+      "success": true
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "total_trades": 10,
+      "win_rate": 50.0,
+      "total_pnl_usd": 103.30402908767108,
+      "total_pnl_pct": 1.0330402908766882,
+      "max_drawdown_pct": 1.0140703905171153,
+      "success": true
+    },
+    {
+      "symbol": "ADAUSDT",
+      "total_trades": 4,
+      "win_rate": 25.0,
+      "total_pnl_usd": -91.91552163396406,
+      "total_pnl_pct": -0.919155216339659,
+      "max_drawdown_pct": 0.919155216339659,
+      "success": true
+    },
+    {
+      "symbol": "LINKUSDT",
+      "total_trades": 7,
+      "win_rate": 42.857142857142854,
+      "total_pnl_usd": -76.94849860584121,
+      "total_pnl_pct": -0.7694849860583963,
+      "max_drawdown_pct": 1.0741672949180416,
+      "success": true
+    },
+    {
+      "symbol": "DOTUSDT",
+      "total_trades": 5,
+      "win_rate": 0.0,
+      "total_pnl_usd": -165.19923065570018,
+      "total_pnl_pct": -1.6519923065570037,
+      "max_drawdown_pct": 1.6519923065570037,
+      "success": true
+    },
+    {
+      "symbol": "ATOMUSDT",
+      "total_trades": 12,
+      "win_rate": 33.33333333333333,
+      "total_pnl_usd": -127.15178464673767,
+      "total_pnl_pct": -1.2715178464673955,
+      "max_drawdown_pct": 1.7550449965545876,
+      "success": true
+    },
+    {
+      "symbol": "SUIUSDT",
+      "total_trades": 9,
+      "win_rate": 33.33333333333333,
+      "total_pnl_usd": -97.25006227307078,
+      "total_pnl_pct": -0.9725006227306949,
+      "max_drawdown_pct": 1.8483350007524495,
+      "success": true
+    }
+  ]
+}

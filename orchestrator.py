@@ -1,11 +1,9 @@
 """
 orchestrator.py — Координатор Дины.
 
-Запускает параллельно:
-  - Дина-Лонг  (StrategistClient direction="LONG")
-  - Дина-Шорт  (StrategistClient direction="SHORT")
-  - SafetyGuard (независимый watchdog)
-  - DataFeed    (поставка данных)
+Только запуск и остановка компонентов.
+Вся логика мониторинга — в position_monitor.py.
+Вся логика трейлинга — в trailing_manager.py.
 
 Использование в main.py:
     from orchestrator import Orchestrator
@@ -15,8 +13,7 @@ orchestrator.py — Координатор Дины.
 import asyncio
 import logging
 import os
-import signal
-import time
+from typing import Dict
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -32,25 +29,23 @@ from signal_builder import SignalBuilder
 from strategist_client import StrategistClient
 from safety_guard import create_safety_guard, SafetyGuardConfig
 from data_feed import DataFeed
+from trailing_manager import TrailingManager
+from position_monitor import PositionMonitor
 
 logger = logging.getLogger("Orchestrator")
+
 
 class Orchestrator:
     """
     Координатор всех компонентов Дины.
-
-    Архитектура:
-        DataFeed ──► SignalBuilder ──► StrategistLong  ──► BitgetExecutor
-                                   └─► StrategistShort ──► BitgetExecutor
-        SafetyGuard (независимо мониторит позиции)
-        DinaBot     (Telegram-управление)
+    Только инициализация, запуск и остановка.
     """
 
     def __init__(self):
         self._tasks: list[asyncio.Task] = []
         self._shutdown_event = asyncio.Event()
 
-        # Компоненты — инициализируются в setup()
+        # Компоненты — инициализируются в _setup()
         self.bus: EventBus | None = None
         self.executor: BitgetExecutor | None = None
         self.bot: DinaBot | None = None
@@ -58,6 +53,10 @@ class Orchestrator:
         self.strategist_long: StrategistClient | None = None
         self.strategist_short: StrategistClient | None = None
         self.data_feed: DataFeed | None = None
+        self.position_monitor: PositionMonitor | None = None
+        self.trailing_manager: TrailingManager | None = None
+        self.portfolio: PortfolioState | None = None
+        self.risk_manager: RiskManager | None = None
 
     # ──────────────────────────────────────────────
     # Точка входа
@@ -88,10 +87,8 @@ class Orchestrator:
     async def _setup(self) -> None:
         logger.info("Оркестратор: инициализация компонентов...")
 
-        symbols = os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,"
-                                       "XRPUSDT,ADAUSDT,DOGEUSDT,AVAXUSDT,"
-                                       "LINKUSDT,DOTUSDT").split(",")
-        timeframes = os.getenv("TIMEFRAMES", "15m,1h,4h").split(",")
+        symbols = os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT,XRPUSDT,DOGEUSDT,LINKUSDT").split(",")
+        timeframes = os.getenv("TIMEFRAMES", "15m,1h,4h,1d").split(",")
         starting_balance = float(os.getenv("STARTING_BALANCE", 10000))
 
         # EventBus
@@ -101,101 +98,125 @@ class Orchestrator:
         attribution = PerformanceAttribution()
         await attribution.setup()
 
-        # Portfolio
-        portfolio = PortfolioState(
-            balance=starting_balance,
-            peak_balance=starting_balance
-        )
-
-        # RiskManager — общий для лонга и шорта
-        risk_manager = RiskManager(
-            sizer_config=SizerConfig(
-                base_risk_pct=float(os.getenv("BASE_RISK_PCT", 1.0)),
-                max_risk_pct=float(os.getenv("MAX_RISK_PCT", 2.0)),
-            ),
-            max_open_positions=int(os.getenv("MAX_POSITIONS", 2)),
-            daily_loss_limit=float(os.getenv("DAILY_LOSS_LIMIT", 5.0)),
-            max_total_exposure_usd=float(os.getenv("MAX_TOTAL_EXPOSURE", 5000.0)),
-        )
-
-        # BitgetExecutor — общий
+        # BitgetExecutor
         self.executor = BitgetExecutor(ExecutorConfig(
             symbol=symbols[0],
             leverage=int(os.getenv("LEVERAGE", 3)),
         ))
         await self.executor.setup()
 
+        # Баланс с биржи
+        try:
+            starting_balance = await self.executor.get_balance()
+            if starting_balance <= 0:
+                raise ValueError("нулевой баланс")
+        except Exception as e:
+            logger.warning(f"Не удалось получить баланс с биржи: {e} — используем .env")
+            starting_balance = float(os.getenv("STARTING_BALANCE", 10000))
+
+        # Portfolio
+        self.portfolio = PortfolioState(
+            balance=starting_balance,
+            peak_balance=starting_balance,
+        )
+        logger.info(f"💰 Стартовый баланс: ${starting_balance:.2f}")
+
+        # RiskManager
+        self.risk_manager = RiskManager(
+            sizer_config=SizerConfig(
+                base_risk_pct=float(os.getenv("BASE_RISK_PCT", 1.0)),
+                max_risk_pct=float(os.getenv("MAX_RISK_PCT", 2.0)),
+                leverage=int(os.getenv("LEVERAGE", 3)),
+            ),
+            max_open_positions=int(os.getenv("MAX_POSITIONS", 2)),
+            daily_loss_limit=float(os.getenv("DAILY_LOSS_LIMIT", 5.0)),
+            max_total_exposure_usd=float(os.getenv("MAX_TOTAL_EXPOSURE", 5000.0)),
+        )
+
+        # Восстановление позиций с биржи
+        await self._reconcile_positions()
+
         # LearningEngine
         learning_engine = LearningEngine()
         await learning_engine.setup()
 
-        # SignalBuilder — общий для обоих направлений
+        # SignalBuilders (shared cooldown)
+        shared_signal_time: Dict[str, float] = {}
+
         signal_builder_long = SignalBuilder(
-            symbols=symbols,
-            timeframes=timeframes,
-            learning=learning_engine,
-            direction="LONG",
-            bus=self.bus,
+            symbols=symbols, timeframes=timeframes,
+            learning=learning_engine, direction="LONG",
+            bus=self.bus, shared_signal_time=shared_signal_time,
         )
         signal_builder_short = SignalBuilder(
-            symbols=symbols,
-            timeframes=timeframes,
-            learning=learning_engine,
-            direction="SHORT",
-            bus=self.bus,
+            symbols=symbols, timeframes=timeframes,
+            learning=learning_engine, direction="SHORT",
+            bus=self.bus, shared_signal_time=shared_signal_time,
         )
 
-        # DinaBot (Telegram)
+        # Telegram
         self.bot = DinaBot(
             config=TelegramConfig(),
-            risk_manager=risk_manager,
-            portfolio=portfolio,
+            main_loop=asyncio.get_running_loop(),
+            risk_manager=self.risk_manager,
+            portfolio=self.portfolio,
             executor=self.executor,
             attribution=attribution,
             symbols=symbols,
         )
         await self.bot.setup()
-        
-                # Отправляем уведомление о старте
+
         if self.bot:
             startup_msg = "🚀 Дина запущена (dry‑run режим)" if self.executor.cfg.dry_run else "🚀 Дина запущена"
-            await self.bot.alert_error(startup_msg)
+            try:
+                await self.bot._send(startup_msg, priority="info")
+            except Exception as e:
+                logger.warning(f"Orchestrator: не удалось отправить startup сообщение в Telegram: {e}")
+                logger.info("Orchestrator: продолжаем без Telegram уведомления")
 
-        # DataFeed — поставка данных
-        self.data_feed = DataFeed(symbols, timeframes, signal_builder_long)
+        # DataFeed — оба SignalBuilder получают данные + risk_manager получает 4H для корреляции
+        self.data_feed = DataFeed(
+            symbols, timeframes,
+            signal_builders=[signal_builder_long, signal_builder_short],
+            risk_manager=self.risk_manager,
+        )
 
         # Дина-Лонг
         self.strategist_long = StrategistClient(
-            bus=self.bus,
-            symbols=symbols,
-            timeframes=timeframes,
+            bus=self.bus, symbols=symbols, timeframes=timeframes,
             signal_builder=signal_builder_long,
-            learning_engine=learning_engine,
-            attribution=attribution,
-            risk_manager=risk_manager,
-            portfolio=portfolio,
-            executor=self.executor,
-            bot=self.bot,
+            learning_engine=learning_engine, attribution=attribution,
+            risk_manager=self.risk_manager, portfolio=self.portfolio,
+            executor=self.executor, bot=self.bot,
             direction="LONG",
-            tiered_confidence_full=float(os.getenv("LONG_CONF_FULL", 0.75)),
-            tiered_confidence_half=float(os.getenv("LONG_CONF_HALF", 0.55)),
         )
 
-        # Дина-Шорт (более жёсткие фильтры — выше порог уверенности)
+        # Дина-Шорт
         self.strategist_short = StrategistClient(
-            bus=self.bus,
-            symbols=symbols,
-            timeframes=timeframes,
+            bus=self.bus, symbols=symbols, timeframes=timeframes,
             signal_builder=signal_builder_short,
-            learning_engine=learning_engine,
-            attribution=attribution,
-            risk_manager=risk_manager,
-            portfolio=portfolio,
+            learning_engine=learning_engine, attribution=attribution,
+            risk_manager=self.risk_manager, portfolio=self.portfolio,
+            executor=self.executor, bot=self.bot,
+            direction="SHORT",
+        )
+
+        # TrailingManager (с risk_manager для синхронизации partial close)
+        self.trailing_manager = TrailingManager(
             executor=self.executor,
             bot=self.bot,
-            direction="SHORT",
-            tiered_confidence_full=float(os.getenv("SHORT_CONF_FULL", 0.80)),
-            tiered_confidence_half=float(os.getenv("SHORT_CONF_HALF", 0.65)),
+            risk_manager=self.risk_manager,
+        )
+
+        # PositionMonitor
+        self.position_monitor = PositionMonitor(
+            executor=self.executor,
+            trailing_manager=self.trailing_manager,
+            portfolio=self.portfolio,
+            risk_manager=self.risk_manager,
+            strategist_long=self.strategist_long,
+            strategist_short=self.strategist_short,
+            bot=self.bot,
         )
 
         # SafetyGuard
@@ -213,12 +234,21 @@ class Orchestrator:
 
         logger.info("Оркестратор: все компоненты готовы ✅")
         logger.info("  Символов: %d | Таймфреймов: %d", len(symbols), len(timeframes))
-        logger.info("  Дина-Лонг порог: %.2f / %.2f",
-                    self.strategist_long.tiered_confidence_full,
-                    self.strategist_long.tiered_confidence_half)
-        logger.info("  Дина-Шорт порог: %.2f / %.2f",
-                    self.strategist_short.tiered_confidence_full,
-                    self.strategist_short.tiered_confidence_half)
+
+    async def _reconcile_positions(self) -> None:
+        """Восстанавливает позиции с биржи после рестарта."""
+        try:
+            await self.executor._reconcile()
+            positions = await self.executor.get_open_positions()
+            for pos in positions:
+                symbol = pos["symbol"]
+                side = pos.get("side", "long")
+                size_usd = pos.get("size", 0) * pos.get("entry_price", 0)
+                self.risk_manager.on_trade_opened(symbol, size_usd, side, direction=side)
+            if positions:
+                logger.info(f"Восстановлено {len(positions)} позиций в risk_manager")
+        except Exception as e:
+            logger.warning(f"Не удалось восстановить позиции: {e}")
 
     # ──────────────────────────────────────────────
     # Запуск задач
@@ -226,44 +256,84 @@ class Orchestrator:
 
     async def _start_all(self) -> None:
         logger.info("Оркестратор: запуск задач...")
+        self._tasks = []
 
-        self._tasks = [
-            asyncio.create_task(
-                self._run_with_restart(
-                    self.strategist_long.run_loop, "Дина-Лонг"),
-                name="dina-long"),
-            asyncio.create_task(
-                self._run_with_restart(
-                    self.strategist_short.run_loop, "Дина-Шорт"),
-                name="dina-short"),
-            asyncio.create_task(
-                self.safety_guard.run(),
-                name="safety-guard"),
-            asyncio.create_task(
-                self._heartbeat_loop(),
-                name="heartbeat"),
-        ]
+        # Дина-Лонг
+        self._tasks.append(asyncio.create_task(
+            self._run_with_restart(self.strategist_long.run_loop, "Дина-Лонг"),
+            name="dina-long",
+        ))
 
-        # DataFeed если есть метод run
-        if hasattr(self.data_feed, "run"):
-            self._tasks.append(
-                asyncio.create_task(
-                    self._run_with_restart(self.data_feed.run, "DataFeed"),
-                    name="data-feed")
-            )
+        # Дина-Шорт
+        self._tasks.append(asyncio.create_task(
+            self._run_with_restart(self.strategist_short.run_loop, "Дина-Шорт"),
+            name="dina-short",
+        ))
 
-        # Telegram bot polling если есть
-        if hasattr(self.bot, "run"):
-            self._tasks.append(
-                asyncio.create_task(
-                    self._run_with_restart(self.bot.run, "DinaBot"),
-                    name="telegram-bot")
-            )
+        # PositionMonitor
+        self._tasks.append(asyncio.create_task(
+            self._run_with_restart(self.position_monitor.run, "PositionMonitor"),
+            name="position-monitor",
+        ))
+
+        # SafetyGuard
+        self._tasks.append(asyncio.create_task(
+            self.safety_guard.run(),
+            name="safety-guard",
+        ))
+
+        # Heartbeat
+        self._tasks.append(asyncio.create_task(
+            self._heartbeat_loop(),
+            name="heartbeat",
+        ))
+
+        # DataFeed
+        self._tasks.append(asyncio.create_task(
+            self._run_with_restart(self.data_feed.start, "DataFeed"),
+            name="data-feed",
+        ))
+
+        # Telegram
+        if self.bot:
+            self._tasks.append(asyncio.create_task(
+                self._run_with_restart(self.bot.run, "DinaBot"),
+                name="telegram-bot",
+            ))
 
         logger.info("Оркестратор: %d задач запущено ✅", len(self._tasks))
 
     # ──────────────────────────────────────────────
-    # Heartbeat — сигнал жизни для SafetyGuard
+    # Остановка
+    # ──────────────────────────────────────────────
+
+    async def _stop_all(self) -> None:
+        logger.info("Оркестратор: остановка всех задач...")
+
+        if self.position_monitor:
+            self.position_monitor.stop()
+        if self.safety_guard:
+            self.safety_guard.stop()
+        if self.strategist_long:
+            await self.strategist_long.stop()
+        if self.strategist_short:
+            await self.strategist_short.stop()
+        if self.bot:
+            self.bot.stop()
+        if self.data_feed:
+            await self.data_feed.stop()
+
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
+
+        if self._tasks:
+            await asyncio.gather(*self._tasks, return_exceptions=True)
+
+        logger.info("Оркестратор: все задачи остановлены ✅")
+
+    # ──────────────────────────────────────────────
+    # Вспомогательные
     # ──────────────────────────────────────────────
 
     async def _heartbeat_loop(self) -> None:
@@ -276,15 +346,8 @@ class Orchestrator:
                 logger.warning("Heartbeat error: %s", exc)
             await asyncio.sleep(30)
 
-    # ──────────────────────────────────────────────
-    # Авто-рестарт упавших задач
-    # ──────────────────────────────────────────────
-
     async def _run_with_restart(self, coro_fn, name: str) -> None:
-        """
-        Запускает корутину. Если упала — ждёт 10 сек и перезапускает.
-        Максимум 10 перезапусков, потом завершает работу.
-        """
+        """Запускает корутину с авто-рестартом (макс 10 раз)."""
         restarts = 0
         max_restarts = 10
 
@@ -298,67 +361,25 @@ class Orchestrator:
                 return
             except Exception as exc:
                 restarts += 1
-                logger.error(
-                    "%s: упал (попытка %d/%d): %s",
-                    name, restarts, max_restarts, exc
-                )
+                logger.error("%s: упал (попытка %d/%d): %s", name, restarts, max_restarts, exc)
                 if restarts > max_restarts:
-                    logger.critical(
-                        "%s: превышен лимит перезапусков — останавливаю систему",
-                        name
-                    )
+                    logger.critical("%s: превышен лимит перезапусков — останавливаю систему", name)
                     self._shutdown_event.set()
                     return
                 wait = min(10 * restarts, 60)
                 logger.info("%s: перезапуск через %d сек...", name, wait)
                 await asyncio.sleep(wait)
 
-    # ──────────────────────────────────────────────
-    # Остановка
-    # ──────────────────────────────────────────────
+    async def _run_telegram(self) -> None:
+        """Запуск Telegram бота в отдельном потоке."""
+        try:
+            await asyncio.to_thread(self.bot.run_sync)
+        except Exception as exc:
+            logger.error("DinaBot error: %s", exc)
 
-
-    async def _run_telegram_in_thread(self) -> None:
-        """Telegram бот запускается в отдельном потоке со своим event loop."""
-        import threading
-        done = asyncio.Event()
-
-        def run_bot():
-            try:
-                if hasattr(self.bot, "run"):
-                    self.bot.run()
-            except Exception as exc:
-                logger.error("DinaBot thread error: %s", exc)
-            finally:
-                asyncio.get_event_loop().call_soon_threadsafe(done.set)
-
-        t = threading.Thread(target=run_bot, daemon=True, name="telegram-bot")
-        t.start()
-        await done.wait()
-
-    async def _stop_all(self) -> None:
-        logger.info("Оркестратор: остановка всех задач...")
-
-        if self.safety_guard:
-            self.safety_guard.stop()
-
-        if self.strategist_long:
-            await self.strategist_long.stop()
-
-        if self.strategist_short:
-            await self.strategist_short.stop()    
-
-        for task in self._tasks:
-            if not task.done():
-                task.cancel()
-
-        if self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
-
-        logger.info("Оркестратор: все задачи остановлены ✅")
 
 # ──────────────────────────────────────────────────────
-# Точка входа (если запускается напрямую)
+# Точка входа
 # ──────────────────────────────────────────────────────
 
 if __name__ == "__main__":

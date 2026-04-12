@@ -78,9 +78,9 @@ class SafetyGuard:
 
     async def _check_fast_drawdown(self, pos: dict) -> None:
         symbol = pos.get("symbol", "?")
-        side = pos.get("holdSide", "long")
-        entry = float(pos.get("openPriceAvg") or pos.get("averageOpenPrice") or 0)
-        mark = float(pos.get("markPrice") or 0)
+        side = pos.get("holdSide") or pos.get("side", "long")
+        entry = float(pos.get("openPriceAvg") or pos.get("averageOpenPrice") or pos.get("entry_price") or 0)
+        mark = float(pos.get("markPrice") or pos.get("current_price") or 0)
 
         if entry <= 0 or mark <= 0:
             return
@@ -94,7 +94,7 @@ class SafetyGuard:
         if qty > 0 and entry > 0:
             pnl_pct = min(pnl_pct, unrealised / (qty * entry) * 100)
             
-if pnl_pct <= -self.cfg.max_fast_drawdown_pct:
+        if pnl_pct <= -self.cfg.max_fast_drawdown_pct:
             msg = (f"⚠️ DRAWDOWN: {symbol} {side.upper()} "
                    f"просадка {pnl_pct:.2f}% "
                    f"(лимит -{self.cfg.max_fast_drawdown_pct}%) → закрываю")
@@ -161,7 +161,7 @@ if pnl_pct <= -self.cfg.max_fast_drawdown_pct:
         msg = (f"🛡️ EMERGENCY SL: {symbol} {side.upper()} "
                f"SL отсутствует! "
                f"Выставляю SL={emergency_sl:.4f} "
-               f"(entry={entry:.4f}, [REDACTED:env_var]")
+               f"(entry={entry:.4f})")
         logger.warning(msg)
         await self._notify(symbol, msg, level="critical", force=True)
 
@@ -176,7 +176,7 @@ if pnl_pct <= -self.cfg.max_fast_drawdown_pct:
             logger.info("SafetyGuard [DRY-RUN]: SL не выставлен для %s", symbol)
 
     # ── Вспомогательные ─────────────────────────
-async def _get_open_positions(self) -> list:
+    async def _get_open_positions(self) -> list:
         try:
             return await self.executor.get_open_positions() or []
         except Exception as exc:
@@ -200,7 +200,7 @@ async def _get_open_positions(self) -> list:
             return
         try:
             await self.executor.close_position(
-                symbol=symbol, side=side, reason=reason)
+                symbol=symbol, reason=reason)
             logger.info("SafetyGuard: закрыта %s %s (%s)", symbol, side, reason)
         except Exception as exc:
             logger.error("SafetyGuard: не удалось закрыть %s: %s", symbol, exc)

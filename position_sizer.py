@@ -51,6 +51,9 @@ class SizerConfig:
     # Kelly fraction (0 = выключен)
     kelly_fraction: float = 0.25
 
+    # Плечо (умножение размера позиции)
+    leverage: int = 1
+
 
 @dataclass
 class PortfolioState:
@@ -106,7 +109,7 @@ class SizeResult:
 
 
 class PositionSizer:
-    def __init__(self, config: SizerConfig = None):
+    def __init__(self, config: Optional[SizerConfig] = None):
         self.cfg = config or SizerConfig()
         logger.info(f"PositionSizer init | base={self.cfg.base_risk_pct}% max={self.cfg.max_risk_pct}%")
 
@@ -119,6 +122,7 @@ class PositionSizer:
         atr_pct: Optional[float] = None,
         win_rate: Optional[float] = None,
         avg_rr: Optional[float] = None,
+        side: str = "long",
     ) -> SizeResult:
         cfg = self.cfg
 
@@ -152,19 +156,49 @@ class PositionSizer:
 
         # 5. Итоговый риск
         raw_risk = base_risk * vol_mult * conf_mult * dd_mult * streak_mult
-        risk_pct = max(cfg.min_risk_pct, min(raw_risk, cfg.max_risk_pct))
+        # Жёсткое ограничение сверху (с epsilon для float)
+        epsilon = 1e-6
+        if raw_risk > cfg.max_risk_pct + epsilon:
+            logger.warning(
+                f"PositionSizer: raw_risk {raw_risk:.2f}% превышает max_risk_pct {cfg.max_risk_pct}%, "
+                f"обрезаем. Множители: base={base_risk:.2f} vol={vol_mult:.2f} conf={conf_mult:.2f} "
+                f"dd={dd_mult:.2f} streak={streak_mult:.2f}"
+            )
+            raw_risk = cfg.max_risk_pct
+        risk_pct = max(cfg.min_risk_pct, raw_risk)
 
-        # 6. Расчёт позиции через SL distance
+                                        # 6. Расчёт позиции через SL distance
+        # Проверка направления стоп-лосса
+        if side.lower() == "long" and sl_price >= entry_price:
+            return SizeResult(
+                decision=SizerDecision.HALT,
+                halt_reason=f"Invalid SL for long: SL={sl_price} >= Entry={entry_price}"
+            )
+        if side.lower() == "short" and sl_price <= entry_price:
+            return SizeResult(
+                decision=SizerDecision.HALT,
+                halt_reason=f"Invalid SL for short: SL={sl_price} <= Entry={entry_price}"
+            )
+        
         sl_dist_pct = abs(entry_price - sl_price) / entry_price * 100
         if sl_dist_pct < 0.01:
-            sl_dist_pct = 0.5  # защита
+            # Слишком маленький стоп - это ошибка, а не нормальная ситуация
+            return SizeResult(
+                decision=SizerDecision.HALT,
+                halt_reason=f"Stop loss too small: {sl_dist_pct:.4f}% < 0.01%"
+            )
+
+        # Проверка корректности плеча (используем локальную переменную)
+        leverage = cfg.leverage
+        if leverage < 1:
+            leverage = 1
 
         risk_usd = portfolio.balance * risk_pct / 100
-        position_usd = risk_usd / (sl_dist_pct / 100)
+        position_usd = (risk_usd / (sl_dist_pct / 100)) * leverage
         units = position_usd / entry_price
 
         # Решение: REDUCE если любой из множителей сильно снижен
-        is_reduced = (dd_mult < 0.9 or streak_mult < 0.9 or vol_mult < 0.9)
+        is_reduced = (dd_mult < 0.75 or streak_mult < 0.75 or vol_mult < 0.75 or conf_mult < 0.75)
         decision = SizerDecision.REDUCE if is_reduced else SizerDecision.TRADE
 
         return SizeResult(
@@ -189,6 +223,9 @@ class PositionSizer:
 
     def _conf_multiplier(self, confidence: float) -> float:
         cfg = self.cfg
+        # Проверка на равенство conf_max и conf_min
+        if cfg.conf_max == cfg.conf_min:
+            return 1.0
         conf = max(cfg.conf_min, min(confidence, cfg.conf_max))
         ratio = (conf - cfg.conf_min) / (cfg.conf_max - cfg.conf_min)
         mult = 0.60 + ratio * 0.40   # диапазон [0.60, 1.00]

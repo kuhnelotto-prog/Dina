@@ -1,0 +1,507 @@
+[
+  {
+    "symbol": "BTCUSDT",
+    "total_trades": 7,
+    "long_trades": 2,
+    "short_trades": 5,
+    "winning_trades": 2,
+    "losing_trades": 5,
+    "win_rate": 28.57142857142857,
+    "long_win_rate": 50.0,
+    "short_win_rate": 20.0,
+    "avg_rr": -0.35005301495203905,
+    "avg_win_rr": 0.7748144476678633,
+    "step_counts": {
+      "0": 4,
+      "1": 1,
+      "2": 2,
+      "3": 0,
+      "4": 0
+    },
+    "max_drawdown_pct": 0.931083288923791,
+    "total_pnl_usd": -50.538594985511516,
+    "total_pnl_pct": -0.5053859498550992,
+    "rr_list": [
+      0.5000000000000042,
+      0.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      1.0496288953357225
+    ],
+    "win_rr_list": [
+      0.5000000000000042,
+      1.0496288953357225
+    ],
+    "debug_trades": [
+      "short entry=68443.50 exit=67588.05 sl=70154.41->67588.05 risk=1710.91 RR=0.50 pnl=+1.78% [TSL] [step=2] rem=75%",
+      "short entry=66977.40 exit=66977.40 sl=68598.57->66977.40 risk=1621.17 RR=0.00 pnl=+0.00% [TSL] [step=1] rem=100%",
+      "short entry=67164.30 exit=68887.80 sl=68887.80->68887.80 risk=1723.50 RR=-1.00 pnl=-2.57% [SL] rem=100%",
+      " long entry=73873.90 exit=72199.65 sl=72199.65->72199.65 risk=1674.25 RR=-1.00 pnl=-2.27% [SL] rem=100%",
+      "short entry=68039.60 exit=69502.61 sl=69502.61->69502.61 risk=1463.01 RR=-1.00 pnl=-2.15% [SL] rem=100%",
+      "short entry=66202.40 exit=67765.30 sl=67765.30->67765.30 risk=1562.90 RR=-1.00 pnl=-2.36% [SL] rem=100%",
+      " long entry=71042.80 exit=72713.70 sl=69450.90->71838.75 risk=1591.90 RR=1.05 pnl=+2.52% [END_OF_BACKTEST] [step=2] rem=75%"
+    ],
+    "raw_trades": [
+      "<backtester.BacktestPosition object at 0x000002C18F0EE660>",
+      "<backtester.BacktestPosition object at 0x000002C18F15CB90>",
+      "<backtester.BacktestPosition object at 0x000002C18F15CF50>",
+      "<backtester.BacktestPosition object at 0x000002C18F106060>",
+      "<backtester.BacktestPosition object at 0x000002C18F105F30>",
+      "<backtester.BacktestPosition object at 0x000002C18F11E210>",
+      "<backtester.BacktestPosition object at 0x000002C18F1A8160>"
+    ],
+    "final_balance": 9949.46140501449,
+    "success": true
+  },
+  {
+    "symbol": "ETHUSDT",
+    "total_trades": 2,
+    "long_trades": 0,
+    "short_trades": 2,
+    "winning_trades": 1,
+    "losing_trades": 1,
+    "win_rate": 50.0,
+    "long_win_rate": 0.0,
+    "short_win_rate": 50.0,
+    "avg_rr": -0.25,
+    "avg_win_rr": 0.5,
+    "step_counts": {
+      "0": 1,
+      "1": 0,
+      "2": 1,
+      "3": 0,
+      "4": 0
+    },
+    "max_drawdown_pct": 0.32752176694757507,
+    "total_pnl_usd": -13.07702332367575,
+    "total_pnl_pct": -0.1307702332367626,
+    "rr_list": [
+      -1.0,
+      0.5
+    ],
+    "win_rr_list": [
+      0.5
+    ],
+    "debug_trades": [
+      "short entry=1946.56 exit=2010.31 sl=2010.31->2010.31 risk=63.75 RR=-1.00 pnl=-3.28% [SL] rem=100%",
+      "short entry=2059.59 exit=2028.44 sl=2121.90->2028.44 risk=62.31 RR=0.50 pnl=+1.97% [TSL] [step=2] rem=75%"
+    ],
+    "raw_trades": [
+      "<backtester.BacktestPosition object at 0x000002C18F133F00>",
+      "<backtester.BacktestPosition object at 0x000002C18F09AF50>"
+    ],
+    "final_balance": 9986.922976676324,
+    "success": true
+  },
+  {
+    "symbol": "BNBUSDT",
+    "total_trades": 7,
+    "long_trades": 1,
+    "short_trades": 6,
+    "winning_trades": 2,
+    "losing_trades": 5,
+    "win_rate": 28.57142857142857,
+    "long_win_rate": 0.0,
+    "short_win_rate": 33.33333333333333,
+    "avg_rr": -0.42857142857142855,
+    "avg_win_rr": 0.4999999999999999,
+    "step_counts": {
+      "0": 4,
+      "1": 1,
+      "2": 2,
+      "3": 0,
+      "4": 0
+    },
+    "max_drawdown_pct": 0.7339542488931249,
+    "total_pnl_usd": -58.28051900698685,
+    "total_pnl_pct": -0.5828051900698483,
+    "rr_list": [
+      0.5000000000000039,
+      -1.0,
+      -1.0,
+      0.49999999999999584,
+      0.0,
+      -1.0,
+      -1.0
+    ],
+    "win_rr_list": [
+      0.5000000000000039,
+      0.49999999999999584
+    ],
+    "debug_trades": [
+      "short entry=604.31 exit=596.99 sl=618.95->596.99 risk=14.64 RR=0.50 pnl=+1.52% [TSL] [step=2] rem=75%",
+      "short entry=597.03 exit=612.98 sl=612.98->612.98 risk=15.95 RR=-1.00 pnl=-2.67% [SL] rem=100%",
+      "short entry=611.21 exit=623.74 sl=623.74->623.74 risk=12.53 RR=-1.00 pnl=-2.05% [SL] rem=100%",
+      "short entry=643.73 exit=636.91 sl=657.36->636.91 risk=13.63 RR=0.50 pnl=+1.42% [TSL] [step=2] rem=75%",
+      "short entry=613.66 exit=613.66 sl=625.05->613.66 risk=11.39 RR=0.00 pnl=+0.00% [TSL] [step=1] rem=100%",
+      "short entry=583.04 exit=595.87 sl=595.87->595.87 risk=12.83 RR=-1.00 pnl=-2.20% [SL] rem=100%",
+      " long entry=613.03 exit=601.67 sl=601.67->601.67 risk=11.36 RR=-1.00 pnl=-1.85% [SL] rem=100%"
+    ],
+    "raw_trades": [
+      "<backtester.BacktestPosition object at 0x000002C18F09AA50>",
+      "<backtester.BacktestPosition object at 0x000002C18F08E120>",
+      "<backtester.BacktestPosition object at 0x000002C18F08E8A0>",
+      "<backtester.BacktestPosition object at 0x000002C18F08EA80>",
+      "<backtester.BacktestPosition object at 0x000002C18F08E6C0>",
+      "<backtester.BacktestPosition object at 0x000002C18F08E030>",
+      "<backtester.BacktestPosition object at 0x000002C18F08E210>"
+    ],
+    "final_balance": 9941.719480993015,
+    "success": true
+  },
+  {
+    "symbol": "XRPUSDT",
+    "total_trades": 6,
+    "long_trades": 1,
+    "short_trades": 5,
+    "winning_trades": 3,
+    "losing_trades": 3,
+    "win_rate": 50.0,
+    "long_win_rate": 100.0,
+    "short_win_rate": 40.0,
+    "avg_rr": 0.7230902981328962,
+    "avg_win_rr": 2.1128472629324593,
+    "step_counts": {
+      "0": 2,
+      "1": 1,
+      "2": 1,
+      "3": 0,
+      "4": 2
+    },
+    "max_drawdown_pct": 0.27071631775821514,
+    "total_pnl_usd": 95.92856507171166,
+    "total_pnl_pct": 0.9592856507171199,
+    "rr_list": [
+      -1.0,
+      3.059903956798311,
+      0.0,
+      -1.0,
+      2.778637831999069,
+      0.499999999999997
+    ],
+    "win_rr_list": [
+      3.059903956798311,
+      2.778637831999069,
+      0.499999999999997
+    ],
+    "debug_trades": [
+      "short entry=1.91 exit=1.96 sl=1.96->1.96 risk=0.05 RR=-1.00 pnl=-2.71% [SL] rem=100%",
+      "short entry=1.77 exit=1.58 sl=1.83->1.71 risk=0.06 RR=3.06 pnl=+8.13% [TP_2.5R] [step=4] rem=50%",
+      "short entry=1.65 exit=1.65 sl=1.73->1.65 risk=0.08 RR=0.00 pnl=+0.00% [TSL] [step=1] rem=100%",
+      "short entry=1.35 exit=1.39 sl=1.39->1.39 risk=0.04 RR=-1.00 pnl=-2.68% [SL] rem=100%",
+      " long entry=1.41 exit=1.49 sl=1.38->1.44 risk=0.03 RR=2.78 pnl=+5.05% [TP_2.5R] [step=4] rem=50%",
+      "short entry=1.36 exit=1.34 sl=1.40->1.34 risk=0.04 RR=0.50 pnl=+1.82% [TSL] [step=2] rem=75%"
+    ],
+    "raw_trades": [
+      "<backtester.BacktestPosition object at 0x000002C18F08EF30>",
+      "<backtester.BacktestPosition object at 0x000002C18F08ED50>",
+      "<backtester.BacktestPosition object at 0x000002C18F08EE40>",
+      "<backtester.BacktestPosition object at 0x000002C18F08EC60>",
+      "<backtester.BacktestPosition object at 0x000002C18F08F110>",
+      "<backtester.BacktestPosition object at 0x000002C18F08EB70>"
+    ],
+    "final_balance": 10095.928565071712,
+    "success": true
+  },
+  {
+    "symbol": "AVAXUSDT",
+    "total_trades": 6,
+    "long_trades": 1,
+    "short_trades": 5,
+    "winning_trades": 1,
+    "losing_trades": 5,
+    "win_rate": 16.666666666666664,
+    "long_win_rate": 0.0,
+    "short_win_rate": 20.0,
+    "avg_rr": -0.01906413636842867,
+    "avg_win_rr": 2.885615181789428,
+    "step_counts": {
+      "0": 3,
+      "1": 2,
+      "2": 0,
+      "3": 0,
+      "4": 1
+    },
+    "max_drawdown_pct": 1.0300502475778175,
+    "total_pnl_usd": -21.594259638853952,
+    "total_pnl_pct": -0.21594259638854055,
+    "rr_list": [
+      2.885615181789428,
+      -1.0,
+      -1.0,
+      -1.0,
+      0.0,
+      0.0
+    ],
+    "win_rr_list": [
+      2.885615181789428
+    ],
+    "debug_trades": [
+      "short entry=11.01 exit=9.83 sl=11.41->10.60 risk=0.41 RR=2.89 pnl=+8.23% [TP_2.5R] [step=4] rem=50%",
+      "short entry=8.31 exit=8.59 sl=8.59->8.59 risk=0.28 RR=-1.00 pnl=-3.37% [SL] rem=100%",
+      "short entry=8.62 exit=8.96 sl=8.96->8.96 risk=0.35 RR=-1.00 pnl=-4.04% [SL] rem=100%",
+      "short entry=8.81 exit=9.07 sl=9.07->9.07 risk=0.26 RR=-1.00 pnl=-2.93% [SL] rem=100%",
+      "short entry=8.81 exit=8.81 sl=9.05->8.81 risk=0.24 RR=0.00 pnl=+0.00% [TSL] [step=1] rem=100%",
+      " long entry=9.30 exit=9.30 sl=8.97->9.30 risk=0.33 RR=0.00 pnl=+0.00% [TSL] [step=1] rem=100%"
+    ],
+    "raw_trades": [
+      "<backtester.BacktestPosition object at 0x000002C18F08E990>",
+      "<backtester.BacktestPosition object at 0x000002C18F08F200>",
+      "<backtester.BacktestPosition object at 0x000002C18F08F020>",
+      "<backtester.BacktestPosition object at 0x000002C18F08E7B0>",
+      "<backtester.BacktestPosition object at 0x000002C18F08F5C0>",
+      "<backtester.BacktestPosition object at 0x000002C18F08F4D0>"
+    ],
+    "final_balance": 9978.405740361146,
+    "success": true
+  },
+  {
+    "symbol": "DOGEUSDT",
+    "total_trades": 8,
+    "long_trades": 2,
+    "short_trades": 6,
+    "winning_trades": 2,
+    "losing_trades": 6,
+    "win_rate": 25.0,
+    "long_win_rate": 0.0,
+    "short_win_rate": 33.33333333333333,
+    "avg_rr": -0.018455274616532014,
+    "avg_win_rr": 1.5989009111550538,
+    "step_counts": {
+      "0": 4,
+      "1": 2,
+      "2": 1,
+      "3": 0,
+      "4": 1
+    },
+    "max_drawdown_pct": 1.0076260861821498,
+    "total_pnl_usd": 17.814949588561213,
+    "total_pnl_pct": 0.17814949588562742,
+    "rr_list": [
+      0.5,
+      2.6978018223101077,
+      0.0,
+      -1.0,
+      0.0,
+      -1.0,
+      -1.0,
+      -0.34544401924236373
+    ],
+    "win_rr_list": [
+      0.5,
+      2.6978018223101077
+    ],
+    "debug_trades": [
+      "short entry=0.13 exit=0.13 sl=0.13->0.13 risk=0.00 RR=0.50 pnl=+2.20% [TSL] [step=2] rem=75%",
+      "short entry=0.12 exit=0.10 sl=0.12->0.11 risk=0.00 RR=2.70 pnl=+9.76% [TP_2.5R] [step=4] rem=50%",
+      "short entry=0.11 exit=0.11 sl=0.11->0.11 risk=0.01 RR=0.00 pnl=+0.00% [TSL] [step=1] rem=100%",
+      "short entry=0.09 exit=0.10 sl=0.10->0.10 risk=0.00 RR=-1.00 pnl=-3.41% [SL] rem=100%",
+      " long entry=0.10 exit=0.10 sl=0.10->0.10 risk=0.00 RR=0.00 pnl=+0.00% [TSL] [step=1] rem=100%",
+      "short entry=0.09 exit=0.09 sl=0.09->0.09 risk=0.00 RR=-1.00 pnl=-2.80% [SL] rem=100%",
+      "short entry=0.09 exit=0.09 sl=0.09->0.09 risk=0.00 RR=-1.00 pnl=-3.04% [SL] rem=100%",
+      " long entry=0.09 exit=0.09 sl=0.09->0.09 risk=0.00 RR=-0.35 pnl=-0.87% [END_OF_BACKTEST] rem=100%"
+    ],
+    "raw_trades": [
+      "<backtester.BacktestPosition object at 0x000002C18F08FA70>",
+      "<backtester.BacktestPosition object at 0x000002C18F08F3E0>",
+      "<backtester.BacktestPosition object at 0x000002C18F08F7A0>",
+      "<backtester.BacktestPosition object at 0x000002C18F08F6B0>",
+      "<backtester.BacktestPosition object at 0x000002C18F08F980>",
+      "<backtester.BacktestPosition object at 0x000002C18F08FC50>",
+      "<backtester.BacktestPosition object at 0x000002C18F08F2F0>",
+      "<backtester.BacktestPosition object at 0x000002C18F08F890>"
+    ],
+    "final_balance": 10017.814949588563,
+    "success": true
+  },
+  {
+    "symbol": "ADAUSDT",
+    "total_trades": 0,
+    "long_trades": 0,
+    "short_trades": 0,
+    "winning_trades": 0,
+    "losing_trades": 0,
+    "win_rate": 0.0,
+    "long_win_rate": 0.0,
+    "short_win_rate": 0.0,
+    "avg_rr": 0.0,
+    "avg_win_rr": 0.0,
+    "step_counts": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    },
+    "max_drawdown_pct": 0.0,
+    "total_pnl_usd": 0.0,
+    "total_pnl_pct": 0.0,
+    "rr_list": [],
+    "win_rr_list": [],
+    "debug_trades": [],
+    "raw_trades": [],
+    "final_balance": 10000.0,
+    "success": true
+  },
+  {
+    "symbol": "LINKUSDT",
+    "total_trades": 5,
+    "long_trades": 1,
+    "short_trades": 4,
+    "winning_trades": 3,
+    "losing_trades": 2,
+    "win_rate": 60.0,
+    "long_win_rate": 0.0,
+    "short_win_rate": 75.0,
+    "avg_rr": 0.10000000000000067,
+    "avg_win_rr": 0.8333333333333345,
+    "step_counts": {
+      "0": 2,
+      "1": 0,
+      "2": 1,
+      "3": 2,
+      "4": 0
+    },
+    "max_drawdown_pct": 0.2893011377965198,
+    "total_pnl_usd": 32.92214197287181,
+    "total_pnl_pct": 0.3292214197287285,
+    "rr_list": [
+      1.0,
+      0.5000000000000033,
+      -1.0,
+      1.0,
+      -1.0
+    ],
+    "win_rr_list": [
+      1.0,
+      0.5000000000000033,
+      1.0
+    ],
+    "debug_trades": [
+      "short entry=12.87 exit=12.51 sl=13.23->12.51 risk=0.36 RR=1.00 pnl=+3.27% [TSL] [step=3] rem=50%",
+      "short entry=8.41 exit=8.28 sl=8.68->8.28 risk=0.27 RR=0.50 pnl=+1.98% [TSL] [step=2] rem=75%",
+      "short entry=8.70 exit=8.93 sl=8.93->8.93 risk=0.23 RR=-1.00 pnl=-2.63% [SL] rem=100%",
+      "short entry=8.93 exit=8.66 sl=9.20->8.66 risk=0.27 RR=1.00 pnl=+3.58% [TSL] [step=3] rem=50%",
+      " long entry=9.18 exit=8.91 sl=8.91->8.91 risk=0.27 RR=-1.00 pnl=-2.89% [SL] rem=100%"
+    ],
+    "raw_trades": [
+      "<backtester.BacktestPosition object at 0x000002C18F08FB60>",
+      "<backtester.BacktestPosition object at 0x000002C18F08FE30>",
+      "<backtester.BacktestPosition object at 0x000002C18F08FF20>",
+      "<backtester.BacktestPosition object at 0x000002C18F08FD40>",
+      "<backtester.BacktestPosition object at 0x000002C18F1E8050>"
+    ],
+    "final_balance": 10032.922141972873,
+    "success": true
+  },
+  {
+    "symbol": "ATOMUSDT",
+    "total_trades": 9,
+    "long_trades": 1,
+    "short_trades": 8,
+    "winning_trades": 2,
+    "losing_trades": 7,
+    "win_rate": 22.22222222222222,
+    "long_win_rate": 0.0,
+    "short_win_rate": 25.0,
+    "avg_rr": -0.2625436753832669,
+    "avg_win_rr": 1.5265132639581367,
+    "step_counts": {
+      "0": 6,
+      "1": 1,
+      "2": 1,
+      "3": 0,
+      "4": 1
+    },
+    "max_drawdown_pct": 1.5544084354032994,
+    "total_pnl_usd": -108.10733397367528,
+    "total_pnl_pct": -1.0810733397367585,
+    "rr_list": [
+      -1.0,
+      2.5530265279162707,
+      -1.0,
+      -1.0,
+      0.5000000000000029,
+      -1.0,
+      -1.0,
+      0.0,
+      -0.4159196063656759
+    ],
+    "win_rr_list": [
+      2.5530265279162707,
+      0.5000000000000029
+    ],
+    "debug_trades": [
+      "short entry=2.24 exit=2.31 sl=2.31->2.31 risk=0.07 RR=-1.00 pnl=-3.19% [SL] rem=100%",
+      "short entry=2.10 exit=1.91 sl=2.17->2.02 risk=0.07 RR=2.55 pnl=+8.02% [TP_2.5R] [step=4] rem=50%",
+      "short entry=1.83 exit=1.95 sl=1.95->1.95 risk=0.13 RR=-1.00 pnl=-6.87% [SL] rem=100%",
+      "short entry=1.91 exit=2.00 sl=2.00->2.00 risk=0.09 RR=-1.00 pnl=-4.64% [SL] rem=100%",
+      "short entry=2.10 exit=2.06 sl=2.18->2.06 risk=0.08 RR=0.50 pnl=+2.56% [TSL] [step=2] rem=75%",
+      "short entry=1.73 exit=1.78 sl=1.78->1.78 risk=0.05 RR=-1.00 pnl=-2.95% [SL] rem=100%",
+      "short entry=1.78 exit=1.82 sl=1.82->1.82 risk=0.05 RR=-1.00 pnl=-2.70% [SL] rem=100%",
+      "short entry=1.67 exit=1.67 sl=1.72->1.67 risk=0.05 RR=0.00 pnl=+0.00% [TSL] [step=1] rem=100%",
+      " long entry=1.81 exit=1.79 sl=1.77->1.77 risk=0.04 RR=-0.42 pnl=-1.02% [END_OF_BACKTEST] rem=100%"
+    ],
+    "raw_trades": [
+      "<backtester.BacktestPosition object at 0x000002C18F1E8320>",
+      "<backtester.BacktestPosition object at 0x000002C18F1E8410>",
+      "<backtester.BacktestPosition object at 0x000002C18F1E8140>",
+      "<backtester.BacktestPosition object at 0x000002C18F1E8500>",
+      "<backtester.BacktestPosition object at 0x000002C18F1E8230>",
+      "<backtester.BacktestPosition object at 0x000002C18F1E85F0>",
+      "<backtester.BacktestPosition object at 0x000002C18F1E86E0>",
+      "<backtester.BacktestPosition object at 0x000002C18F1E88C0>",
+      "<backtester.BacktestPosition object at 0x000002C18F1E87D0>"
+    ],
+    "final_balance": 9891.892666026324,
+    "success": true
+  },
+  {
+    "symbol": "SUIUSDT",
+    "total_trades": 4,
+    "long_trades": 1,
+    "short_trades": 3,
+    "winning_trades": 1,
+    "losing_trades": 3,
+    "win_rate": 25.0,
+    "long_win_rate": 0.0,
+    "short_win_rate": 33.33333333333333,
+    "avg_rr": -0.37499999999999956,
+    "avg_win_rr": 0.5000000000000019,
+    "step_counts": {
+      "0": 2,
+      "1": 1,
+      "2": 1,
+      "3": 0,
+      "4": 0
+    },
+    "max_drawdown_pct": 0.7316900952272408,
+    "total_pnl_usd": -52.30103534425455,
+    "total_pnl_pct": -0.5230103534425508,
+    "rr_list": [
+      -1.0,
+      0.0,
+      -1.0,
+      0.5000000000000019
+    ],
+    "win_rr_list": [
+      0.5000000000000019
+    ],
+    "debug_trades": [
+      "short entry=0.86 exit=0.89 sl=0.89->0.89 risk=0.04 RR=-1.00 pnl=-4.24% [SL] rem=100%",
+      " long entry=1.05 exit=1.05 sl=1.01->1.05 risk=0.04 RR=0.00 pnl=+0.00% [TSL] [step=1] rem=100%",
+      "short entry=0.91 exit=0.94 sl=0.94->0.94 risk=0.03 RR=-1.00 pnl=-3.09% [SL] rem=100%",
+      "short entry=0.88 exit=0.86 sl=0.90->0.86 risk=0.03 RR=0.50 pnl=+2.10% [TSL] [step=2] rem=75%"
+    ],
+    "raw_trades": [
+      "<backtester.BacktestPosition object at 0x000002C18F1E8B90>",
+      "<backtester.BacktestPosition object at 0x000002C18F1E9310>",
+      "<backtester.BacktestPosition object at 0x000002C18F1E9220>",
+      "<backtester.BacktestPosition object at 0x000002C18F1E8C80>"
+    ],
+    "final_balance": 9947.698964655745,
+    "success": true
+  }
+]

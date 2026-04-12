@@ -1,3 +1,4 @@
+# Основные зависимости для Дины
 aiohttp>=3.9.0
 aiosqlite>=0.19.0
 aiogram>=3.0.0
@@ -8,4 +9,16 @@ python-dotenv>=1.0.0
 ta>=0.10.0
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
-python-bitget>=0.1.0
+python-bitget>=1.0.0
+
+# Для бэктестера
+ccxt>=4.3.0
+
+# Для логирования
+loguru>=0.7.0
+
+# Для работы с датами
+python-dateutil>=2.8.0
+
+# Для HTTP запросов
+requests>=2.28.0
