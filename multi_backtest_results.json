@@ -1,0 +1,198 @@
+{
+  "period": "2026-01-12 -> 2026-04-12",
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "XRPUSDT",
+    "LINKUSDT",
+    "SOLUSDT",
+    "BNBUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "ARBUSDT",
+    "DOTUSDT"
+  ],
+  "initial_balance": 10000.0,
+  "configs": {
+    "max1": {
+      "max_positions": 1,
+      "total_trades": 27,
+      "total_pnl_pct": -4.269,
+      "sharpe": -0.4,
+      "max_dd_pct": 19.26,
+      "win_rate_pct": 29.6,
+      "per_symbol": {
+        "BNBUSDT": {
+          "trades": 2,
+          "pnl": -0.443,
+          "wr": 50.0
+        },
+        "BTCUSDT": {
+          "trades": 4,
+          "pnl": 0.738,
+          "wr": 50.0
+        },
+        "SOLUSDT": {
+          "trades": 1,
+          "pnl": 10.887,
+          "wr": 100.0
+        },
+        "ETHUSDT": {
+          "trades": 3,
+          "pnl": -4.015,
+          "wr": 0.0
+        },
+        "XRPUSDT": {
+          "trades": 4,
+          "pnl": -1.311,
+          "wr": 25.0
+        },
+        "AVAXUSDT": {
+          "trades": 3,
+          "pnl": -0.36,
+          "wr": 0.0
+        },
+        "DOTUSDT": {
+          "trades": 1,
+          "pnl": -0.12,
+          "wr": 0.0
+        },
+        "ADAUSDT": {
+          "trades": 4,
+          "pnl": -5.413,
+          "wr": 25.0
+        },
+        "ARBUSDT": {
+          "trades": 2,
+          "pnl": 5.534,
+          "wr": 100.0
+        },
+        "LINKUSDT": {
+          "trades": 3,
+          "pnl": -9.766,
+          "wr": 0.0
+        }
+      }
+    },
+    "max2": {
+      "max_positions": 2,
+      "total_trades": 47,
+      "total_pnl_pct": -11.784,
+      "sharpe": -1.35,
+      "max_dd_pct": 18.61,
+      "win_rate_pct": 25.5,
+      "per_symbol": {
+        "XRPUSDT": {
+          "trades": 5,
+          "pnl": -1.885,
+          "wr": 20.0
+        },
+        "BNBUSDT": {
+          "trades": 6,
+          "pnl": -2.478,
+          "wr": 33.3
+        },
+        "SOLUSDT": {
+          "trades": 4,
+          "pnl": 5.518,
+          "wr": 50.0
+        },
+        "BTCUSDT": {
+          "trades": 7,
+          "pnl": 0.189,
+          "wr": 28.6
+        },
+        "ETHUSDT": {
+          "trades": 3,
+          "pnl": -2.008,
+          "wr": 0.0
+        },
+        "AVAXUSDT": {
+          "trades": 6,
+          "pnl": -3.686,
+          "wr": 0.0
+        },
+        "LINKUSDT": {
+          "trades": 5,
+          "pnl": -7.952,
+          "wr": 0.0
+        },
+        "ADAUSDT": {
+          "trades": 6,
+          "pnl": -4.174,
+          "wr": 33.3
+        },
+        "DOTUSDT": {
+          "trades": 1,
+          "pnl": -0.06,
+          "wr": 0.0
+        },
+        "ARBUSDT": {
+          "trades": 4,
+          "pnl": 4.752,
+          "wr": 75.0
+        }
+      }
+    },
+    "max4": {
+      "max_positions": 4,
+      "total_trades": 74,
+      "total_pnl_pct": -2.474,
+      "sharpe": -0.32,
+      "max_dd_pct": 10.69,
+      "win_rate_pct": 32.4,
+      "per_symbol": {
+        "XRPUSDT": {
+          "trades": 6,
+          "pnl": -1.643,
+          "wr": 16.7
+        },
+        "BNBUSDT": {
+          "trades": 7,
+          "pnl": -0.84,
+          "wr": 42.9
+        },
+        "ADAUSDT": {
+          "trades": 10,
+          "pnl": -3.093,
+          "wr": 30.0
+        },
+        "SOLUSDT": {
+          "trades": 6,
+          "pnl": 1.883,
+          "wr": 33.3
+        },
+        "DOTUSDT": {
+          "trades": 6,
+          "pnl": -0.646,
+          "wr": 33.3
+        },
+        "BTCUSDT": {
+          "trades": 10,
+          "pnl": 1.536,
+          "wr": 40.0
+        },
+        "ETHUSDT": {
+          "trades": 5,
+          "pnl": -1.826,
+          "wr": 0.0
+        },
+        "AVAXUSDT": {
+          "trades": 6,
+          "pnl": -1.843,
+          "wr": 0.0
+        },
+        "LINKUSDT": {
+          "trades": 10,
+          "pnl": -3.66,
+          "wr": 30.0
+        },
+        "ARBUSDT": {
+          "trades": 8,
+          "pnl": 7.658,
+          "wr": 75.0
+        }
+      }
+    }
+  }
+}
