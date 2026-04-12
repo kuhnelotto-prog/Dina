@@ -16,8 +16,11 @@ Telegram-интерфейс для Дины.
 import asyncio
 import logging
 import os
+import smtplib
 import time
 from dataclasses import dataclass, field
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from enum import Enum
 from typing import Optional, Dict, List
 
@@ -26,6 +29,75 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# EmailNotifier — SMTP fallback для critical-алертов
+# ============================================================
+
+class EmailNotifier:
+    """Асинхронный email-отправщик для critical-алертов когда Telegram недоступен."""
+
+    def __init__(self):
+        self.smtp_host = os.getenv("SMTP_HOST", "")
+        self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        self.smtp_user = os.getenv("SMTP_USER", "")
+        self.smtp_password = os.getenv("SMTP_PASSWORD", "")
+        self.alert_email_to = os.getenv("ALERT_EMAIL_TO", "")
+        self._configured = bool(self.smtp_host and self.smtp_user and self.smtp_password and self.alert_email_to)
+
+        if self._configured:
+            logger.info(f"EmailNotifier: configured (host={self.smtp_host}, to={self.alert_email_to})")
+        else:
+            logger.info("EmailNotifier: not configured (SMTP_HOST/SMTP_USER/SMTP_PASSWORD/ALERT_EMAIL_TO missing)")
+
+    @property
+    def is_configured(self) -> bool:
+        return self._configured
+
+    async def send(self, subject: str, body: str, priority: str = "critical") -> bool:
+        """
+        Отправляет email асинхронно (через thread pool чтобы не блокировать event loop).
+        Returns True если отправлено успешно.
+        """
+        if not self._configured:
+            logger.warning("EmailNotifier: not configured, cannot send email")
+            return False
+
+        try:
+            result = await asyncio.get_event_loop().run_in_executor(
+                None, self._send_sync, subject, body, priority
+            )
+            return result
+        except Exception as e:
+            logger.error(f"EmailNotifier: async send failed: {e}")
+            return False
+
+    def _send_sync(self, subject: str, body: str, priority: str) -> bool:
+        """Синхронная отправка email (вызывается из thread pool)."""
+        try:
+            msg = MIMEMultipart()
+            msg["From"] = self.smtp_user
+            msg["To"] = self.alert_email_to
+            msg["Subject"] = f"[Dina {priority.upper()}] {subject}"
+
+            # Высокий приоритет для critical
+            if priority == "critical":
+                msg["X-Priority"] = "1"
+                msg["Importance"] = "high"
+
+            msg.attach(MIMEText(body, "plain", "utf-8"))
+
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as server:
+                server.starttls()
+                server.login(self.smtp_user, self.smtp_password)
+                server.send_message(msg)
+
+            logger.info(f"EmailNotifier: sent '{subject}' to {self.alert_email_to}")
+            return True
+        except Exception as e:
+            logger.error(f"EmailNotifier: SMTP send failed: {e}")
+            return False
 
 
 # ============================================================
@@ -86,6 +158,9 @@ class DinaBot:
         # Буфер для ночных сообщений
         self._night_buffer: List[dict] = []
         self._night_mode = False
+
+        # Email fallback для critical-алертов
+        self._email_notifier = EmailNotifier()
 
         if self.cfg.allowed_ids:
             self._owner_chat_id = next(iter(self.cfg.allowed_ids))
@@ -399,21 +474,47 @@ class DinaBot:
     # ============================================================
 
     async def _send(self, text: str, priority: str = "normal"):
-        """Отправляет сообщение с учётом ночного режима и приоритета."""
-        text = self._escape(text)   # принудительное экранирование
+        """
+        Отправляет сообщение с учётом ночного режима и приоритета.
+        Для priority="critical": если Telegram недоступен — fallback на email.
+        """
+        raw_text = text  # сохраняем для email (без escape)
+        text = self._escape(text)   # принудительное экранирование для Telegram
         if not self._owner_chat_id or not self._app:
             logger.warning(f"DinaBot: нет получателя для алерта: {text[:60]}")
+            # Для critical — пробуем email даже без Telegram
+            if priority == "critical" and self._email_notifier.is_configured:
+                await self._email_notifier.send(
+                    subject="Critical Alert (no Telegram)",
+                    body=raw_text,
+                    priority=priority,
+                )
+                logger.info("Telegram unavailable, sent via email fallback")
             return
 
         now = time.gmtime()
         is_night = (now.tm_hour >= self.cfg.silent_start_hour or now.tm_hour < self.cfg.silent_end_hour)
 
         if priority in ("critical", "high") or not is_night:
-            await self._app.bot.send_message(
-                chat_id=self._owner_chat_id,
-                text=text,
-                parse_mode=ParseMode.MARKDOWN_V2,
-            )
+            try:
+                await asyncio.wait_for(
+                    self._app.bot.send_message(
+                        chat_id=self._owner_chat_id,
+                        text=text,
+                        parse_mode=ParseMode.MARKDOWN_V2,
+                    ),
+                    timeout=5.0,
+                )
+            except (asyncio.TimeoutError, Exception) as e:
+                logger.error(f"DinaBot: Telegram send failed: {e}")
+                # Email fallback только для critical
+                if priority == "critical" and self._email_notifier.is_configured:
+                    await self._email_notifier.send(
+                        subject="Critical Alert",
+                        body=raw_text,
+                        priority=priority,
+                    )
+                    logger.info("Telegram unavailable, sent via email fallback")
         else:
             self._night_buffer.append({"text": text, "priority": priority})
             if len(self._night_buffer) == 1:
