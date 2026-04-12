@@ -55,6 +55,11 @@ class PositionMonitor:
         # Последнее известное состояние позиций: symbol -> dict
         self._last_known: Dict[str, dict] = {}
 
+        # VaR monitoring
+        self._var_limit_triggered: bool = False
+        self._var_check_counter: int = 0
+        self._var_check_interval: int = 30  # каждые 30 итераций ≈ 5 мин
+
     async def run(self):
         """Главный цикл монитора."""
         self._running = True
@@ -99,6 +104,11 @@ class PositionMonitor:
         # Трейлинг-стоп для каждой открытой позиции
         for pos in positions:
             await self._run_trailing(pos)
+
+        # VaR проверка (каждые ~5 минут)
+        self._var_check_counter += 1
+        if self._var_check_counter % self._var_check_interval == 0:
+            await self._check_portfolio_var()
 
     # ──────────────────────────────────────────────
     # Обработка событий
@@ -263,6 +273,56 @@ class PositionMonitor:
             logger.info(f"💰 Баланс обновлён: ${old_balance:.2f} → ${new_balance:.2f}")
         except Exception as e:
             logger.warning(f"Не удалось обновить баланс: {e}")
+
+    async def _check_portfolio_var(self):
+        """
+        Проверяет портфельный VaR и автоматически снижает/восстанавливает риск.
+        
+        Если VaR > 10% баланса → уменьшить max_risk_pct вдвое.
+        Если VaR вернулся ниже порога → восстановить исходный max_risk_pct.
+        """
+        try:
+            exceeded, var_usd = self.risk_manager.check_var_limit(
+                portfolio=self.portfolio,
+                atr_pct_by_symbol=None,  # используем дефолт 1.5%
+                var_limit_pct=0.10,
+            )
+
+            if exceeded and not self._var_limit_triggered:
+                # VaR превышен — снижаем риск
+                self._var_limit_triggered = True
+                self.risk_manager.apply_var_reduction()
+                logger.warning(
+                    f"📉 VaR limit triggered: ${var_usd:.0f} > "
+                    f"${self.portfolio.balance * 0.10:.0f} (10% of balance)"
+                )
+                if self.bot:
+                    await self.bot._send(
+                        f"⚠️ VaR limit exceeded!\n"
+                        f"VaR: ${var_usd:.0f}\n"
+                        f"Limit: ${self.portfolio.balance * 0.10:.0f}\n"
+                        f"max_risk_pct reduced by 50%",
+                        priority="warning"
+                    )
+
+            elif not exceeded and self._var_limit_triggered:
+                # VaR вернулся в норму — восстанавливаем
+                self._var_limit_triggered = False
+                self.risk_manager.restore_var_risk()
+                logger.info(
+                    f"📈 VaR limit cleared: ${var_usd:.0f} < "
+                    f"${self.portfolio.balance * 0.10:.0f}"
+                )
+                if self.bot:
+                    await self.bot._send(
+                        f"✅ VaR limit cleared\n"
+                        f"VaR: ${var_usd:.0f}\n"
+                        f"max_risk_pct restored",
+                        priority="info"
+                    )
+
+        except Exception as e:
+            logger.warning(f"VaR check error: {e}")
 
     def _get_strategist_for_side(self, side: str):
         """Возвращает нужный strategist по стороне позиции."""

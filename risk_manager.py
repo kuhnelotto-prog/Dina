@@ -390,6 +390,94 @@ class RiskManager:
         return (True, 1.0, "")
 
     # ============================================================
+    # Portfolio VaR (Value at Risk)
+    # ============================================================
+
+    def calculate_portfolio_var(self, atr_pct_by_symbol: Optional[Dict[str, float]] = None) -> float:
+        """
+        Упрощённый портфельный VaR (95% confidence).
+        
+        Формула: VaR = total_exposure × avg_volatility × z_score
+        
+        Args:
+            atr_pct_by_symbol: словарь {symbol: atr_pct} для каждой открытой позиции.
+                              Если None — используем дефолт 1.5%.
+        Returns:
+            VaR в USD (максимальный ожидаемый убыток за 1 день с 95% вероятностью)
+        """
+        z_score = 1.65  # 95% confidence
+
+        if not self._open_positions:
+            return 0.0
+
+        total_exposure = 0.0
+        weighted_vol = 0.0
+
+        for symbol, pos in self._open_positions.items():
+            size_usd = pos.get("size_usd", 0)
+            total_exposure += size_usd
+
+            # ATR% как proxy для дневной волатильности
+            if atr_pct_by_symbol and symbol in atr_pct_by_symbol:
+                vol = atr_pct_by_symbol[symbol] / 100.0
+            else:
+                vol = 0.015  # дефолт 1.5%
+
+            weighted_vol += size_usd * vol
+
+        if total_exposure <= 0:
+            return 0.0
+
+        avg_volatility = weighted_vol / total_exposure
+        var_usd = total_exposure * avg_volatility * z_score
+
+        return var_usd
+
+    def check_var_limit(
+        self,
+        portfolio: PortfolioState,
+        atr_pct_by_symbol: Optional[Dict[str, float]] = None,
+        var_limit_pct: float = 0.10,
+    ) -> Tuple[bool, float]:
+        """
+        Проверяет VaR лимит и возвращает (exceeded, var_usd).
+        
+        Args:
+            portfolio: текущее состояние портфеля
+            atr_pct_by_symbol: ATR% по символам
+            var_limit_pct: максимальный VaR как доля от баланса (0.10 = 10%)
+            
+        Returns:
+            (exceeded: bool, var_usd: float)
+        """
+        var_usd = self.calculate_portfolio_var(atr_pct_by_symbol)
+        var_limit_usd = portfolio.balance * var_limit_pct
+        exceeded = var_usd > var_limit_usd
+
+        if exceeded:
+            logger.warning(
+                f"⚠️ VaR limit exceeded: ${var_usd:.0f} > ${var_limit_usd:.0f} "
+                f"({var_usd/portfolio.balance*100:.1f}% > {var_limit_pct*100:.0f}%)"
+            )
+
+        return exceeded, var_usd
+
+    def apply_var_reduction(self):
+        """Уменьшает max_risk_pct вдвое при превышении VaR."""
+        if not hasattr(self, '_original_max_risk_pct'):
+            self._original_max_risk_pct = self.sizer.cfg.max_risk_pct
+        
+        new_risk = self._original_max_risk_pct * 0.5
+        self.sizer.cfg.max_risk_pct = new_risk
+        logger.warning(f"VaR limit exceeded, reducing max_risk_pct to {new_risk:.2f}%")
+
+    def restore_var_risk(self):
+        """Восстанавливает исходный max_risk_pct после снятия VaR лимита."""
+        if hasattr(self, '_original_max_risk_pct'):
+            self.sizer.cfg.max_risk_pct = self._original_max_risk_pct
+            logger.info(f"VaR limit cleared, restoring max_risk_pct to {self._original_max_risk_pct:.2f}%")
+
+    # ============================================================
     # Внутренние методы
     # ============================================================
 
