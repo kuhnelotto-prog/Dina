@@ -133,6 +133,17 @@ class StrategistClient:
 
         composite = signal.get("composite_score", 0.0)
 
+        # ── Disabled sources filter (P1.5) ──
+        disabled = self.learning_engine.disabled_sources
+        if disabled:
+            for src in disabled:
+                logger.info(f"[{self.direction}] {symbol}: Source '{src}' disabled, ignoring in composite")
+            # Если ВСЕ источники disabled — пропускаем символ
+            from learning_engine import DEFAULT_WEIGHTS
+            if len(disabled) >= len(DEFAULT_WEIGHTS):
+                logger.warning(f"[{self.direction}] {symbol}: ALL sources disabled, skipping")
+                return
+
         # ── Funding rate коррекция порога ──
         funding_penalty = 0.0
         try:
