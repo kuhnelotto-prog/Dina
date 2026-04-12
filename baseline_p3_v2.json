@@ -15,14 +15,14 @@
   ],
   "results": {
     "total_trades": 33,
-    "total_pnl_pct": 2.276,
-    "sharpe": 1.24,
-    "max_dd_pct": 1.62,
+    "total_pnl_pct": 0.56,
+    "sharpe": 0.36,
+    "max_dd_pct": 2.19,
     "by_symbol": {
       "BTCUSDT": {
         "trades": 1,
         "wr": 100.0,
-        "pnl": 0.994,
+        "pnl": 0.737,
         "max_dd": 0.0,
         "sharpe": 0.0
       },
@@ -35,27 +35,27 @@
       },
       "XRPUSDT": {
         "trades": 10,
-        "wr": 40.0,
-        "pnl": 0.067,
-        "max_dd": 0.64,
-        "sharpe": 0.2
+        "wr": 30.0,
+        "pnl": -0.276,
+        "max_dd": 0.66,
+        "sharpe": -0.91
       },
       "LINKUSDT": {
         "trades": 12,
-        "wr": 41.7,
-        "pnl": -0.321,
-        "max_dd": 0.97,
-        "sharpe": -0.65
+        "wr": 33.3,
+        "pnl": -1.028,
+        "max_dd": 1.37,
+        "sharpe": -2.23
       },
       "SOLUSDT": {
         "trades": 2,
         "wr": 50.0,
-        "pnl": 1.622,
+        "pnl": 1.212,
         "max_dd": 0.28,
-        "sharpe": 4.45
+        "sharpe": 4.09
       }
     }
   },
   "why_fewer_trades": "P1 had 26 trades, P3 v1 had 21 trades despite LOWER thresholds. Reason: implicit serialization in backtester \u2014 only 1 position per symbol at a time. With P3 lower thresholds, winning trades survive longer (trailing steps 2-3), blocking the slot for new entries. Fewer but higher-quality trades.",
-  "decision": "COMMIT"
+  "decision": "NO_COMMIT"
 }

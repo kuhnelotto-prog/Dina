@@ -57,8 +57,8 @@ class BacktestPosition:
       Step 1: +0.5R → SL to breakeven
       Step 2: +1.0R → partial close 25%, SL to +0.5R
       Step 3: +1.5R → partial close 25%, SL to +1.0R
-      Step 4: +2.5R → SL to +1.2R, remaining ~50% stays open
-    No hard TP — exits only via trailing SL.
+      Step 4: +2.5R → close everything (hard TP)
+    OOS-validated: hard TP generalizes better than trailing alternatives.
     R = 1.5 * ATR (in price units).
     """
     def __init__(self, symbol, side, entry_price, size_usd, sl_price, tp_price, timestamp):
@@ -120,9 +120,9 @@ class BacktestPosition:
           Step 1 (+0.5R): SL → breakeven
           Step 2 (+1.0R): close 25%, SL → entry + 0.5R
           Step 3 (+1.5R): close 25%, SL → entry + 1.0R
-          Step 4 (+2.5R): SL → entry + 1.2R, remaining 50% stays open
-        No hard TP — position exits only via trailing SL.
-        Returns True if position fully closed (never from this method after fix).
+          Step 4 (+2.5R): close everything (hard TP, OOS-validated)
+        Tested alternatives (pure trailing, hybrid) — hard TP generalizes best.
+        Returns True if position fully closed at step 4.
         """
         R = self.initial_risk
         if R <= 0:
@@ -167,15 +167,12 @@ class BacktestPosition:
             self._partial_close(1/3, close)
             logger.debug(f"  TSL step 3: {self.symbol} close 25%, SL->{new_sl:.2f}")
 
-        # Step 4 — SL to +1.2R, remaining ~50% stays open (no hard TP)
+        # Step 4 — close everything at +2.5R (hard TP, OOS-validated)
         elif step < 4 and r >= 2.5:
-            if self.side == "long":
-                new_sl = self.entry_price + R * 1.2
-            else:
-                new_sl = self.entry_price - R * 1.2
-            self.sl_price = new_sl
             self.trailing_step = 4
-            logger.debug(f"  TSL step 4: {self.symbol} SL->{new_sl:.2f} (remaining {self.remaining_pct*100:.0f}%)")
+            self._close(close, "TP_2.5R")
+            logger.debug(f"  TSL step 4: {self.symbol} full close at +2.5R")
+            return True
 
         return False
 

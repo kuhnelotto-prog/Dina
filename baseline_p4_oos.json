@@ -1,0 +1,72 @@
+{
+  "oos_period": "2025-10-12 -> 2026-01-12",
+  "train_period": "2026-01-12 -> 2026-04-12",
+  "commit": "ed1249e",
+  "change": "Step 4: hard TP at 2.5R -> trailing SL at +1.2R",
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "XRPUSDT",
+    "LINKUSDT",
+    "SOLUSDT"
+  ],
+  "train_hard_tp": {
+    "total_trades": 52,
+    "total_pnl_pct": 1.308,
+    "sharpe": 0.66,
+    "max_dd_pct": 1.97,
+    "win_rate_pct": 34.6
+  },
+  "train_trailing": {
+    "total_trades": 33,
+    "total_pnl_pct": 2.276,
+    "sharpe": 1.24,
+    "max_dd_pct": 1.62,
+    "win_rate_pct": 39.4
+  },
+  "oos_trailing": {
+    "total_trades": 69,
+    "total_pnl_pct": 0.597,
+    "sharpe": 0.22,
+    "max_dd_pct": 2.9,
+    "win_rate_pct": 36.2,
+    "by_symbol": {
+      "BTCUSDT": {
+        "trades": 18,
+        "wr": 33.3,
+        "pnl": -0.558,
+        "max_dd": 1.07,
+        "sharpe": -1.27
+      },
+      "ETHUSDT": {
+        "trades": 18,
+        "wr": 27.8,
+        "pnl": -0.41,
+        "max_dd": 1.27,
+        "sharpe": -0.69
+      },
+      "XRPUSDT": {
+        "trades": 12,
+        "wr": 50.0,
+        "pnl": 1.683,
+        "max_dd": 0.67,
+        "sharpe": 2.88
+      },
+      "LINKUSDT": {
+        "trades": 15,
+        "wr": 40.0,
+        "pnl": -0.487,
+        "max_dd": 1.6,
+        "sharpe": -0.67
+      },
+      "SOLUSDT": {
+        "trades": 6,
+        "wr": 33.3,
+        "pnl": 0.369,
+        "max_dd": 0.74,
+        "sharpe": 1.14
+      }
+    }
+  },
+  "verdict": "MARGINAL"
+}
