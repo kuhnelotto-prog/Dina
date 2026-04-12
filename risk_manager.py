@@ -74,9 +74,19 @@ class RiskManager:
         # Обновлено после бэктестов: оставлены только прибыльные монеты
         self.SECTOR_GROUPS = {
             "L1": ["BTCUSDT", "ETHUSDT"],
+            "L2": [],                       # зарезервировано
             "DeFi": ["LINKUSDT"],
+            "AI": [],                       # зарезервировано
+            "Gaming": [],                   # зарезервировано
+            "Infra": [],                    # зарезервировано
             "Meme": ["DOGEUSDT"],
             "Alt_L1": ["XRPUSDT"],
+        }
+
+        # Лимиты позиций по секторам
+        self.SECTOR_LIMITS = {
+            "L1": 2,        # макс 2 позиции в L1
+            "default": 1,   # макс 1 позиция в остальных секторах
         }
 
         # Кэш корреляций секторов (обновляется раз в цикл)
@@ -359,18 +369,46 @@ class RiskManager:
 
     def _check_correlation(self, symbol: str, direction: str) -> bool:
         """
-        Группы корреляции: используем self.SECTOR_GROUPS (единый источник).
-        Если уже есть позиция в той же группе — блокируем вход.
+        Секторная корреляция: ограничивает количество позиций в одном секторе.
+        
+        Лимиты:
+          - L1 (BTC, ETH): макс 2 позиции
+          - Остальные секторы: макс 1 позиция
+          
+        BTC-коэффициент: BTCUSDT занимает 0.5 слота в L1
+        (т.к. BTC менее волатилен и менее коррелирован с ETH на коротких таймфреймах)
+        
+        # TODO: в будущем ограничивать по общей экспозиции в секторе, а не по количеству позиций
         """
         symbol_group = self._get_symbol_sector(symbol)
 
         if not symbol_group:
-            return True
+            return True  # символ не в секторе — пропускаем
 
+        # Считаем сколько позиций уже открыто в этом секторе
+        sector_slots_used = 0.0
         for pos in self._open_positions.values():
             pos_group = self._get_symbol_sector(pos["symbol"])
             if pos_group == symbol_group:
-                return False
+                # BTC занимает 0.5 слота в L1
+                if pos["symbol"] == "BTCUSDT" and symbol_group == "L1":
+                    sector_slots_used += 0.5
+                else:
+                    sector_slots_used += 1.0
+
+        # Сколько слотов займёт новая позиция
+        new_slot = 0.5 if (symbol == "BTCUSDT" and symbol_group == "L1") else 1.0
+
+        # Лимит для сектора
+        sector_limit = self.SECTOR_LIMITS.get(symbol_group, self.SECTOR_LIMITS["default"])
+
+        if sector_slots_used + new_slot > sector_limit:
+            logger.info(
+                f"RiskManager: {symbol} blocked — sector {symbol_group} "
+                f"slots={sector_slots_used:.1f}+{new_slot:.1f} > limit={sector_limit}"
+            )
+            return False
+
         return True
 
     # ============================================================
