@@ -244,6 +244,7 @@ class StrategistClient:
 
             # Attribution
             sources = self._identify_sources(signal)
+            setup_type = self._determine_setup_type(signal)
             await self.attribution.record_open(
                 trade_id=trade_id,
                 symbol=symbol,
@@ -251,6 +252,7 @@ class StrategistClient:
                 entry_price=price,
                 sources=sources,
                 deepseek_conf=confidence,
+                setup_type=setup_type,
             )
 
             # Telegram
@@ -329,6 +331,53 @@ class StrategistClient:
         if signal.get("sweep_bull") or signal.get("sweep_bear"):
             sources.append(SignalSource.TECHNICAL)
         return sources
+
+    def _determine_setup_type(self, signal: dict) -> str:
+        """
+        Определяет тип сетапа на основе сигналов.
+        
+        Возможные значения:
+          - trend_continuation: EMA cross + ADX trending
+          - trend_reversal: engulfing + FVG или divergence
+          - breakout: breakout сигнал (Bollinger/Keltner)
+          - fvg: Fair Value Gap доминирует
+          - sweep: Liquidity sweep доминирует
+          - unknown: не удалось определить
+        """
+        has_fvg = signal.get("fvg_bull") or signal.get("fvg_bear")
+        has_sweep = signal.get("sweep_bull") or signal.get("sweep_bear")
+        has_engulfing = signal.get("engulfing_bull") or signal.get("engulfing_bear")
+        has_ema_cross = signal.get("ema_cross_bull") or signal.get("ema_cross_bear")
+        has_breakout = signal.get("bb_breakout") or signal.get("keltner_breakout")
+        has_divergence = signal.get("rsi_divergence") or signal.get("macd_divergence")
+        adx_trending = signal.get("adx", 0) > 25
+
+        # Приоритет определения:
+        # 1. sweep (ликвидность) — если есть sweep
+        if has_sweep:
+            return "sweep"
+        
+        # 2. fvg — если FVG доминирует
+        if has_fvg and not has_ema_cross:
+            return "fvg"
+        
+        # 3. breakout — если есть breakout сигнал
+        if has_breakout:
+            return "breakout"
+        
+        # 4. trend_reversal — engulfing + (FVG или divergence)
+        if has_engulfing and (has_fvg or has_divergence):
+            return "trend_reversal"
+        
+        # 5. trend_continuation — EMA cross + ADX trending
+        if has_ema_cross and adx_trending:
+            return "trend_continuation"
+        
+        # 6. trend_continuation fallback — EMA cross без ADX
+        if has_ema_cross:
+            return "trend_continuation"
+        
+        return "unknown"
 
     async def _on_command(self, event: BotEvent):
         """Обработка команд из Telegram."""

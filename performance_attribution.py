@@ -116,9 +116,15 @@ class PerformanceAttribution:
                     opened_at REAL NOT NULL,
                     closed_at REAL DEFAULT 0,
                     is_closed INTEGER DEFAULT 0,
-                    deepseek_conf REAL DEFAULT 0
+                    deepseek_conf REAL DEFAULT 0,
+                    setup_type TEXT DEFAULT ''
                 )
             """)
+            # Миграция: добавить setup_type если таблица уже существует
+            try:
+                await db.execute("ALTER TABLE attributed_trades ADD COLUMN setup_type TEXT DEFAULT ''")
+            except Exception:
+                pass  # колонка уже существует
             await db.commit()
         logger.info("PerformanceAttribution: таблица готова")
 
@@ -130,6 +136,7 @@ class PerformanceAttribution:
         entry_price: float,
         sources: List[SignalSource],
         deepseek_conf: float = 0.0,
+        setup_type: str = "",
     ):
         trade = AttributedTrade(
             trade_id=trade_id,
@@ -144,16 +151,16 @@ class PerformanceAttribution:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
                 INSERT OR REPLACE INTO attributed_trades
-                (trade_id, symbol, direction, entry_price, sources, opened_at, deepseek_conf)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (trade_id, symbol, direction, entry_price, sources, opened_at, deepseek_conf, setup_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 trade_id, symbol, direction, entry_price,
                 ",".join(s.value for s in sources),
-                trade.opened_at, deepseek_conf,
+                trade.opened_at, deepseek_conf, setup_type,
             ))
             await db.commit()
 
-        logger.info(f"Attribution OPEN: {trade_id} {symbol} {direction} sources=[{','.join(s.value for s in sources)}]")
+        logger.info(f"Attribution OPEN: {trade_id} {symbol} {direction} setup={setup_type} sources=[{','.join(s.value for s in sources)}]")
 
     async def record_close(
         self,
@@ -243,6 +250,100 @@ class PerformanceAttribution:
         if harmful:
             names = ", ".join(s.source.value for s in harmful[:2])
             lines.append(f"⚠️ Убыточные источники: {names} — пересмотри вес")
+
+        return "\n".join(lines)
+
+    # ============================================================
+    # Setup Attribution — статистика по типам сетапов
+    # ============================================================
+
+    async def get_stats_by_setup(self, days: int = 30) -> Dict[str, dict]:
+        """
+        Возвращает expectancy, winrate, avg_win, avg_loss, Sharpe по каждому setup_type.
+        """
+        since = time.time() - days * 86400
+
+        async with aiosqlite.connect(self.db_path) as db:
+            cur = await db.execute("""
+                SELECT setup_type, pnl_pct
+                FROM attributed_trades
+                WHERE is_closed=1 AND closed_at >= ? AND setup_type != ''
+            """, (since,))
+            rows = await cur.fetchall()
+
+        # Группируем по setup_type
+        from collections import defaultdict
+        groups: Dict[str, list] = defaultdict(list)
+        for setup_type, pnl_pct in rows:
+            if setup_type:
+                groups[setup_type].append(pnl_pct)
+
+        result = {}
+        for setup, pnls in groups.items():
+            wins = [p for p in pnls if p > 0]
+            losses = [p for p in pnls if p <= 0]
+            total = len(pnls)
+            win_rate = len(wins) / total if total > 0 else 0
+            avg_win = sum(wins) / len(wins) if wins else 0
+            avg_loss = sum(losses) / len(losses) if losses else 0
+            expectancy = (win_rate * avg_win) + ((1 - win_rate) * avg_loss) if total > 0 else 0
+
+            # Sharpe (annualized, assuming ~1 trade/day)
+            import numpy as np
+            pnl_arr = np.array(pnls)
+            sharpe = (pnl_arr.mean() / pnl_arr.std() * np.sqrt(252)) if len(pnls) > 1 and pnl_arr.std() > 0 else 0
+
+            result[setup] = {
+                "trades": total,
+                "win_rate": win_rate,
+                "avg_win": avg_win,
+                "avg_loss": avg_loss,
+                "expectancy": expectancy,
+                "sharpe": float(sharpe),
+                "total_pnl": sum(pnls),
+            }
+
+        return result
+
+    def should_send_diagnostics(self, total_trades_since_last: int, threshold: int = 100) -> bool:
+        """Проверяет, прошло ли threshold сделок с последнего отчёта."""
+        return total_trades_since_last >= threshold
+
+    async def format_diagnostics_message(self, days: int = 30) -> str:
+        """Формирует Telegram-отчёт по setup attribution."""
+        stats = await self.get_stats_by_setup(days=days)
+        if not stats:
+            return f"📊 Setup Diagnostics: нет данных за {days} дней."
+
+        sorted_setups = sorted(stats.items(), key=lambda x: x[1]["expectancy"], reverse=True)
+
+        lines = [
+            f"📊 Setup Diagnostics (последние {days} дней)",
+            "",
+            f"{'Setup':<20} | {'Trades':>6} | {'WR':>7} | {'Expect':>8} | {'Sharpe':>7} | {'Total':>8}",
+            "─" * 72,
+        ]
+
+        for setup, st in sorted_setups:
+            emoji = "✅" if st["expectancy"] > 0 else "❌"
+            lines.append(
+                f"{emoji} {setup:<18} | "
+                f"{st['trades']:>6} | "
+                f"{st['win_rate']*100:>6.1f}% | "
+                f"{st['expectancy']:>+7.2f}% | "
+                f"{st['sharpe']:>6.2f} | "
+                f"{st['total_pnl']:>+7.2f}%"
+            )
+
+        # Рекомендации
+        lines.append("")
+        profitable = [s for s, st in sorted_setups if st["expectancy"] > 0 and st["trades"] >= 5]
+        unprofitable = [s for s, st in sorted_setups if st["expectancy"] < 0 and st["trades"] >= 5]
+
+        if profitable:
+            lines.append(f"💡 Лучшие сетапы: {', '.join(profitable[:3])}")
+        if unprofitable:
+            lines.append(f"⚠️ Убыточные сетапы: {', '.join(unprofitable[:3])} — пересмотри фильтры")
 
         return "\n".join(lines)
 

@@ -22,6 +22,7 @@ class TradeRecord:
     source: str = "live"          # backtest, dryrun, live
     commission: float = 0.0
     commission_asset: str = "USDT"
+    setup_type: str = ""          # trend_continuation, trend_reversal, breakout, fvg, sweep, unknown
 
     def __post_init__(self):
         if self.tags is None:
