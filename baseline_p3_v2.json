@@ -14,17 +14,17 @@
     "adx_growth: removed"
   ],
   "results": {
-    "total_trades": 52,
-    "total_pnl_pct": 1.308,
-    "sharpe": 0.66,
-    "max_dd_pct": 1.97,
+    "total_trades": 33,
+    "total_pnl_pct": 2.276,
+    "sharpe": 1.24,
+    "max_dd_pct": 1.62,
     "by_symbol": {
       "BTCUSDT": {
-        "trades": 10,
-        "wr": 40.0,
-        "pnl": 0.824,
-        "max_dd": 0.54,
-        "sharpe": 2.81
+        "trades": 1,
+        "wr": 100.0,
+        "pnl": 0.994,
+        "max_dd": 0.0,
+        "sharpe": 0.0
       },
       "ETHUSDT": {
         "trades": 8,
@@ -34,25 +34,25 @@
         "sharpe": -0.35
       },
       "XRPUSDT": {
-        "trades": 11,
-        "wr": 36.4,
-        "pnl": 0.216,
+        "trades": 10,
+        "wr": 40.0,
+        "pnl": 0.067,
         "max_dd": 0.64,
-        "sharpe": 0.57
+        "sharpe": 0.2
       },
       "LINKUSDT": {
-        "trades": 13,
-        "wr": 38.5,
-        "pnl": -0.38,
+        "trades": 12,
+        "wr": 41.7,
+        "pnl": -0.321,
         "max_dd": 0.97,
-        "sharpe": -0.66
+        "sharpe": -0.65
       },
       "SOLUSDT": {
-        "trades": 10,
-        "wr": 30.0,
-        "pnl": 0.735,
-        "max_dd": 0.68,
-        "sharpe": 1.45
+        "trades": 2,
+        "wr": 50.0,
+        "pnl": 1.622,
+        "max_dd": 0.28,
+        "sharpe": 4.45
       }
     }
   },

@@ -57,8 +57,9 @@ class BacktestPosition:
       Step 1: +0.5R → SL to breakeven
       Step 2: +1.0R → partial close 25%, SL to +0.5R
       Step 3: +1.5R → partial close 25%, SL to +1.0R
-      Step 4: +2.5R → close everything
-    No floating TP — exits only via SL or step-4 full close.
+      Step 4: +2.5R → SL to +1.2R, remaining ~50% stays open
+    No hard TP — exits only via trailing SL.
+    R = 1.5 * ATR (in price units).
     """
     def __init__(self, symbol, side, entry_price, size_usd, sl_price, tp_price, timestamp):
         self.symbol = symbol
@@ -119,8 +120,9 @@ class BacktestPosition:
           Step 1 (+0.5R): SL → breakeven
           Step 2 (+1.0R): close 25%, SL → entry + 0.5R
           Step 3 (+1.5R): close 25%, SL → entry + 1.0R
-          Step 4 (+2.5R): close everything
-        Returns True if position fully closed (step 4).
+          Step 4 (+2.5R): SL → entry + 1.2R, remaining 50% stays open
+        No hard TP — position exits only via trailing SL.
+        Returns True if position fully closed (never from this method after fix).
         """
         R = self.initial_risk
         if R <= 0:
@@ -139,7 +141,7 @@ class BacktestPosition:
             new_sl = self.entry_price
             self.sl_price = new_sl
             self.trailing_step = 1
-            logger.debug(f"  TSL step 1: {self.symbol} SL→breakeven {new_sl:.2f}")
+            logger.debug(f"  TSL step 1: {self.symbol} SL->breakeven {new_sl:.2f}")
 
         # Step 2 — close 25%, SL to +0.5R
         elif step < 2 and r >= 1.0:
@@ -151,7 +153,7 @@ class BacktestPosition:
             self.trailing_step = 2
             # Partial close 25% of current remaining
             self._partial_close(0.25, close)
-            logger.debug(f"  TSL step 2: {self.symbol} close 25%, SL→{new_sl:.2f}")
+            logger.debug(f"  TSL step 2: {self.symbol} close 25%, SL->{new_sl:.2f}")
 
         # Step 3 — close another 25%, SL to +1.0R
         elif step < 3 and r >= 1.5:
@@ -163,14 +165,17 @@ class BacktestPosition:
             self.trailing_step = 3
             # Partial close 25% of current remaining (= 1/3 of what's left after step 2)
             self._partial_close(1/3, close)
-            logger.debug(f"  TSL step 3: {self.symbol} close 25%, SL→{new_sl:.2f}")
+            logger.debug(f"  TSL step 3: {self.symbol} close 25%, SL->{new_sl:.2f}")
 
-        # Step 4 — close everything (+2.5R)
+        # Step 4 — SL to +1.2R, remaining ~50% stays open (no hard TP)
         elif step < 4 and r >= 2.5:
+            if self.side == "long":
+                new_sl = self.entry_price + R * 1.2
+            else:
+                new_sl = self.entry_price - R * 1.2
+            self.sl_price = new_sl
             self.trailing_step = 4
-            self._close(close, "TP_2.5R")
-            logger.debug(f"  TSL step 4: {self.symbol} full close at +2.5R")
-            return True
+            logger.debug(f"  TSL step 4: {self.symbol} SL->{new_sl:.2f} (remaining {self.remaining_pct*100:.0f}%)")
 
         return False
 
