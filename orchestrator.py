@@ -87,7 +87,7 @@ class Orchestrator:
     async def _setup(self) -> None:
         logger.info("Оркестратор: инициализация компонентов...")
 
-        symbols = os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT,XRPUSDT,DOGEUSDT,LINKUSDT").split(",")
+        symbols = os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT,XRPUSDT,LINKUSDT,SOLUSDT").split(",")
         timeframes = os.getenv("TIMEFRAMES", "15m,1h,4h,1d").split(",")
         starting_balance = float(os.getenv("STARTING_BALANCE", 10000))
 

@@ -82,8 +82,8 @@ class RiskManager:
             "AI": [],                       # зарезервировано
             "Gaming": [],                   # зарезервировано
             "Infra": [],                    # зарезервировано
-            "Meme": ["DOGEUSDT"],
-            "Alt_L1": ["XRPUSDT"],
+            "Meme": [],  # DOGE removed in P3 v2
+            "Alt_L1": ["XRPUSDT", "SOLUSDT"],
         }
 
         # Лимиты позиций по секторам

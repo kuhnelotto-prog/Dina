@@ -28,23 +28,21 @@ ADX_BLACKLIST = {"UNIUSDT", "NEARUSDT", "FILUSDT"}  # these are no longer in SYM
 class ADXFilter:
     """
     ADX(14) trend-strength filter.
-    Rejects entries when ADX < threshold or ADX is falling.
+    Rejects entries when ADX < threshold.
+    Note: adx_growth check removed in P3 (was overtight, rejected profitable signals).
     """
-    def __init__(self, threshold: float = 18.0, min_growth: float = 0.5):
+    def __init__(self, threshold: float = 18.0, min_growth: float = None):
         self.threshold = threshold
-        self.min_growth = min_growth  # ADX must grow by at least this vs prev candle
+        self.min_growth = min_growth  # deprecated, kept for API compat
 
-    def check(self, adx: float, adx_prev: float) -> tuple:
+    def check(self, adx: float, adx_prev: float = 0.0) -> tuple:
         """
         Returns (passed: bool, reason: str).
         passed=True means trend is strong enough to trade.
         """
         if adx < self.threshold:
             return False, f"ADX={adx:.1f} < {self.threshold} (no trend)"
-        growth = adx - adx_prev
-        if growth < self.min_growth:
-            return False, f"ADX falling: {adx_prev:.1f}->{adx:.1f} (growth={growth:+.1f} < {self.min_growth})"
-        return True, f"ADX={adx:.1f} OK (growth={growth:+.1f})"
+        return True, f"ADX={adx:.1f} OK"
 
 # ─────────────────────────────────────────────────────
 
@@ -457,11 +455,11 @@ class Backtester:
             "sweep": 0.7,
         }
 
-        # Динамические пороги по BTC EMA50 на 4H (synced with strategist_client)
-        THRESHOLD_LONG_BULL = 0.30    # BTC bullish → LONG агрессивнее
-        THRESHOLD_LONG_BEAR = 0.45    # BTC bearish → LONG консервативнее
-        THRESHOLD_SHORT_BULL = 0.45   # BTC bullish → SHORT консервативнее
-        THRESHOLD_SHORT_BEAR = 0.30   # BTC bearish → SHORT агрессивнее
+        # Динамические пороги по BTC EMA50 на 4H (P3 tuned, synced with strategist_client)
+        THRESHOLD_LONG_BULL = 0.20    # BTC bullish → LONG агрессивнее (was 0.30)
+        THRESHOLD_LONG_BEAR = 0.30    # BTC bearish → LONG консервативнее (was 0.45)
+        THRESHOLD_SHORT_BULL = 0.35   # BTC bullish → SHORT консервативнее (was 0.45)
+        THRESHOLD_SHORT_BEAR = 0.35   # BTC bearish → SHORT moderate (P3 v2 tuned)
 
         # Precompute BTC EMA50 for regime detection (4H)
         btc_ema50 = None

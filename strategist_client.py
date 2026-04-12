@@ -26,12 +26,12 @@ logger = logging.getLogger(__name__)
 #   BTC price < EMA50 → bearish: LONG консервативнее, SHORT агрессивнее
 
 # LONG пороги по режиму BTC:
-ENTRY_THRESHOLD_LONG_BULL = 0.30      # bullish → агрессивнее
-ENTRY_THRESHOLD_LONG_BEAR = 0.45      # bearish → консервативнее
+ENTRY_THRESHOLD_LONG_BULL = 0.20      # bullish → агрессивнее (P3 tuned, was 0.30)
+ENTRY_THRESHOLD_LONG_BEAR = 0.30      # bearish → консервативнее (P3 tuned, was 0.45)
 
 # SHORT пороги по режиму BTC:
-ENTRY_THRESHOLD_SHORT_BULL = 0.45     # bullish → консервативнее
-ENTRY_THRESHOLD_SHORT_BEAR = 0.30     # bearish → агрессивнее
+ENTRY_THRESHOLD_SHORT_BULL = 0.35     # bullish → консервативнее (P3 tuned, was 0.45)
+ENTRY_THRESHOLD_SHORT_BEAR = 0.35     # bearish → SHORT moderate (P3 v2 tuned, was 0.30)
 
 # Funding rate: если |funding| > этого порога, повышаем threshold на FUNDING_PENALTY
 FUNDING_EXTREME_THRESHOLD = 0.0005  # 0.05% за 8 часов = ~0.15%/день
@@ -125,7 +125,7 @@ class StrategistClient:
         # ── ADX Filter (BEFORE Score) ──
         adx_val = signal.get("adx", 0.0)
         adx_prev = signal.get("adx_prev", 0.0)
-        _adx_filter = ADXFilter(threshold=18.0, min_growth=0.5)
+        _adx_filter = ADXFilter(threshold=18.0)  # P3: adx_growth removed
         adx_ok, adx_reason = _adx_filter.check(adx_val, adx_prev)
         if not adx_ok:
             logger.debug(f"[{self.direction}] {symbol}: ADX rejected: {adx_reason}")

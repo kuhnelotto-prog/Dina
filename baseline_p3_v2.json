@@ -1,0 +1,61 @@
+{
+  "period": "2026-01-12 -> 2026-04-12",
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "XRPUSDT",
+    "LINKUSDT",
+    "SOLUSDT"
+  ],
+  "changes": [
+    "DOGE removed, SOL added",
+    "composite_threshold LONG: 0.20 (BULL), 0.30 (BEAR)",
+    "composite_threshold SHORT: 0.35 (BULL), 0.45 (BEAR)",
+    "adx_growth: removed"
+  ],
+  "results": {
+    "total_trades": 52,
+    "total_pnl_pct": 1.308,
+    "sharpe": 0.66,
+    "max_dd_pct": 1.97,
+    "by_symbol": {
+      "BTCUSDT": {
+        "trades": 10,
+        "wr": 40.0,
+        "pnl": 0.824,
+        "max_dd": 0.54,
+        "sharpe": 2.81
+      },
+      "ETHUSDT": {
+        "trades": 8,
+        "wr": 25.0,
+        "pnl": -0.086,
+        "max_dd": 0.55,
+        "sharpe": -0.35
+      },
+      "XRPUSDT": {
+        "trades": 11,
+        "wr": 36.4,
+        "pnl": 0.216,
+        "max_dd": 0.64,
+        "sharpe": 0.57
+      },
+      "LINKUSDT": {
+        "trades": 13,
+        "wr": 38.5,
+        "pnl": -0.38,
+        "max_dd": 0.97,
+        "sharpe": -0.66
+      },
+      "SOLUSDT": {
+        "trades": 10,
+        "wr": 30.0,
+        "pnl": 0.735,
+        "max_dd": 0.68,
+        "sharpe": 1.45
+      }
+    }
+  },
+  "why_fewer_trades": "P1 had 26 trades, P3 v1 had 21 trades despite LOWER thresholds. Reason: implicit serialization in backtester \u2014 only 1 position per symbol at a time. With P3 lower thresholds, winning trades survive longer (trailing steps 2-3), blocking the slot for new entries. Fewer but higher-quality trades.",
+  "decision": "COMMIT"
+}
