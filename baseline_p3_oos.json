@@ -1,0 +1,95 @@
+{
+  "oos_period": "2025-10-12 -> 2026-01-12",
+  "train_period": "2026-01-12 -> 2026-04-12",
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "XRPUSDT",
+    "LINKUSDT",
+    "SOLUSDT"
+  ],
+  "oos_results": {
+    "total_trades": 91,
+    "total_pnl_pct": 1.7,
+    "sharpe": 0.46,
+    "max_dd_pct": 3.41,
+    "win_rate_pct": 37.4,
+    "by_symbol": {
+      "BTCUSDT": {
+        "trades": 21,
+        "wr": 28.6,
+        "pnl": -0.628,
+        "max_dd": 1.07,
+        "sharpe": -1.24
+      },
+      "ETHUSDT": {
+        "trades": 22,
+        "wr": 31.8,
+        "pnl": 0.639,
+        "max_dd": 1.27,
+        "sharpe": 0.78
+      },
+      "XRPUSDT": {
+        "trades": 14,
+        "wr": 50.0,
+        "pnl": 2.022,
+        "max_dd": 0.67,
+        "sharpe": 2.92
+      },
+      "LINKUSDT": {
+        "trades": 17,
+        "wr": 41.2,
+        "pnl": -0.132,
+        "max_dd": 1.6,
+        "sharpe": -0.16
+      },
+      "SOLUSDT": {
+        "trades": 17,
+        "wr": 41.2,
+        "pnl": -0.201,
+        "max_dd": 1.27,
+        "sharpe": -0.26
+      }
+    }
+  },
+  "train_results": {
+    "total_trades": 52,
+    "total_pnl_pct": 1.308,
+    "sharpe": 0.66,
+    "max_dd_pct": 1.97,
+    "by_symbol": {
+      "BTCUSDT": {
+        "trades": 10,
+        "wr": 40.0,
+        "pnl": 0.824
+      },
+      "ETHUSDT": {
+        "trades": 8,
+        "wr": 25.0,
+        "pnl": -0.086
+      },
+      "XRPUSDT": {
+        "trades": 11,
+        "wr": 36.4,
+        "pnl": 0.216
+      },
+      "LINKUSDT": {
+        "trades": 13,
+        "wr": 38.5,
+        "pnl": -0.38
+      },
+      "SOLUSDT": {
+        "trades": 10,
+        "wr": 30.0,
+        "pnl": 0.735
+      }
+    }
+  },
+  "comparison": {
+    "delta_trades": 39,
+    "delta_pnl_pct": 0.392,
+    "delta_sharpe": -0.2,
+    "delta_max_dd": 1.44
+  },
+  "verdict": "PASS"
+}
