@@ -185,7 +185,10 @@ class SignalBuilder:
                 continue
 
             calc = IndicatorsCalculator()
-            indicators = calc.compute(df)
+            # Look-ahead fix: для старших ТФ (1h, 4h) используем только закрытые свечи
+            # Последняя свеча может быть ещё незакрыта — отбрасываем её
+            df_closed = df.iloc[:-1] if tf in ("1h", "4h") else df
+            indicators = calc.compute(df_closed)
             if "error" in indicators:
                 missing_tfs.append(tf)
                 continue
@@ -217,7 +220,7 @@ class SignalBuilder:
         Если данных 1D нет — пропускаем фильтр (разрешаем вход).
         """
         df_1d = self._candle_cache.get((symbol, "1d"))
-        if df_1d is None or len(df_1d) < self._ema50_1d_window:
+        if df_1d is None or len(df_1d) < self._ema50_1d_window + 1:
             # Нет данных 1D — не блокируем (graceful degradation)
             logger.debug(f"No 1D data for {symbol}, skipping daily trend filter")
             return True
@@ -225,8 +228,9 @@ class SignalBuilder:
         close = df_1d["close"] if "close" in df_1d.columns else df_1d.iloc[:, 3]
         ema50 = close.ewm(span=self._ema50_1d_window, adjust=False).mean()
         
-        current_close = float(close.iloc[-1])
-        current_ema50 = float(ema50.iloc[-1])
+        # Look-ahead fix: используем последнюю закрытую 1D свечу (iloc[-2])
+        current_close = float(close.iloc[-2])
+        current_ema50 = float(ema50.iloc[-2])
 
         if direction == "LONG" and current_close < current_ema50:
             logger.info(
@@ -504,15 +508,16 @@ class SignalBuilder:
         Нет данных → "BULL" (default, не блокируем)
         """
         df_4h = self._candle_cache.get(("BTCUSDT", "4h"))
-        if df_4h is None or len(df_4h) < 50:
+        if df_4h is None or len(df_4h) < 51:
             logger.debug("No BTC 4H data for regime detection, defaulting to BULL")
             return "BULL"
 
         close = df_4h["close"] if "close" in df_4h.columns else df_4h.iloc[:, 3]
         ema50 = close.ewm(span=50, adjust=False).mean()
 
-        current_close = float(close.iloc[-1])
-        current_ema50 = float(ema50.iloc[-1])
+        # Look-ahead fix: используем последнюю закрытую 4H свечу (iloc[-2])
+        current_close = float(close.iloc[-2])
+        current_ema50 = float(ema50.iloc[-2])
 
         if current_close > current_ema50:
             return "BULL"
@@ -526,15 +531,16 @@ class SignalBuilder:
         Returns: "BULL", "BEAR", или "SIDEWAYS"
         """
         df_4h = self._candle_cache.get((symbol, "4h"))
-        if df_4h is None or len(df_4h) < self._regime_ema_slow:
+        if df_4h is None or len(df_4h) < self._regime_ema_slow + 1:
             return "SIDEWAYS"  # недостаточно данных — нейтральный режим
 
         close = df_4h["close"] if "close" in df_4h.columns else df_4h.iloc[:, 3]
         ema_fast = close.ewm(span=self._regime_ema_fast, adjust=False).mean()
         ema_slow = close.ewm(span=self._regime_ema_slow, adjust=False).mean()
 
-        current_fast = float(ema_fast.iloc[-1])
-        current_slow = float(ema_slow.iloc[-1])
+        # Look-ahead fix: используем последнюю закрытую 4H свечу (iloc[-2])
+        current_fast = float(ema_fast.iloc[-2])
+        current_slow = float(ema_slow.iloc[-2])
 
         if current_slow == 0:
             return "SIDEWAYS"
