@@ -1,0 +1,921 @@
+{
+  "period": "2026-01-12 -> 2026-04-12",
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "XRPUSDT",
+    "DOGEUSDT",
+    "LINKUSDT"
+  ],
+  "verbose_filter_logging": true,
+  "funnel_by_symbol": {
+    "BTCUSDT": {
+      "total_candles": 540,
+      "signals_evaluated": 430,
+      "filter_rejections": {
+        "adx_threshold": 73,
+        "adx_growth": 220,
+        "composite_threshold": 261,
+        "ema_trend": 0,
+        "rsi_filter": 0,
+        "btc_1d_ema50": 4
+      },
+      "passed_all_filters": 7,
+      "rejection_rates": {
+        "adx_threshold": 17.0,
+        "adx_growth": 51.2,
+        "composite_threshold": 60.7,
+        "ema_trend": 0.0,
+        "rsi_filter": 0.0,
+        "btc_1d_ema50": 0.9
+      }
+    },
+    "ETHUSDT": {
+      "total_candles": 540,
+      "signals_evaluated": 475,
+      "filter_rejections": {
+        "adx_threshold": 103,
+        "adx_growth": 244,
+        "composite_threshold": 248,
+        "ema_trend": 0,
+        "rsi_filter": 0,
+        "btc_1d_ema50": 6
+      },
+      "passed_all_filters": 2,
+      "rejection_rates": {
+        "adx_threshold": 21.7,
+        "adx_growth": 51.4,
+        "composite_threshold": 52.2,
+        "ema_trend": 0.0,
+        "rsi_filter": 0.0,
+        "btc_1d_ema50": 1.3
+      }
+    },
+    "XRPUSDT": {
+      "total_candles": 540,
+      "signals_evaluated": 445,
+      "filter_rejections": {
+        "adx_threshold": 120,
+        "adx_growth": 230,
+        "composite_threshold": 177,
+        "ema_trend": 0,
+        "rsi_filter": 0,
+        "btc_1d_ema50": 6
+      },
+      "passed_all_filters": 6,
+      "rejection_rates": {
+        "adx_threshold": 27.0,
+        "adx_growth": 51.7,
+        "composite_threshold": 39.8,
+        "ema_trend": 0.0,
+        "rsi_filter": 0.0,
+        "btc_1d_ema50": 1.3
+      }
+    },
+    "DOGEUSDT": {
+      "total_candles": 540,
+      "signals_evaluated": 452,
+      "filter_rejections": {
+        "adx_threshold": 127,
+        "adx_growth": 225,
+        "composite_threshold": 185,
+        "ema_trend": 0,
+        "rsi_filter": 0,
+        "btc_1d_ema50": 6
+      },
+      "passed_all_filters": 7,
+      "rejection_rates": {
+        "adx_threshold": 28.1,
+        "adx_growth": 49.8,
+        "composite_threshold": 40.9,
+        "ema_trend": 0.0,
+        "rsi_filter": 0.0,
+        "btc_1d_ema50": 1.3
+      }
+    },
+    "LINKUSDT": {
+      "total_candles": 540,
+      "signals_evaluated": 468,
+      "filter_rejections": {
+        "adx_threshold": 88,
+        "adx_growth": 263,
+        "composite_threshold": 227,
+        "ema_trend": 0,
+        "rsi_filter": 0,
+        "btc_1d_ema50": 2
+      },
+      "passed_all_filters": 4,
+      "rejection_rates": {
+        "adx_threshold": 18.8,
+        "adx_growth": 56.2,
+        "composite_threshold": 48.5,
+        "ema_trend": 0.0,
+        "rsi_filter": 0.0,
+        "btc_1d_ema50": 0.4
+      }
+    }
+  },
+  "base_metrics": {
+    "BTCUSDT": {
+      "trades": 7,
+      "win_rate": 28.6,
+      "pnl_pct": -0.408,
+      "pnl_usd": -40.81,
+      "max_dd_pct": 0.93
+    },
+    "ETHUSDT": {
+      "trades": 2,
+      "win_rate": 50.0,
+      "pnl_pct": -0.131,
+      "pnl_usd": -13.08,
+      "max_dd_pct": 0.33
+    },
+    "XRPUSDT": {
+      "trades": 6,
+      "win_rate": 50.0,
+      "pnl_pct": 0.958,
+      "pnl_usd": 95.8,
+      "max_dd_pct": 0.27
+    },
+    "DOGEUSDT": {
+      "trades": 7,
+      "win_rate": 28.6,
+      "pnl_pct": 0.157,
+      "pnl_usd": 15.71,
+      "max_dd_pct": 0.92
+    },
+    "LINKUSDT": {
+      "trades": 4,
+      "win_rate": 50.0,
+      "pnl_pct": 0.002,
+      "pnl_usd": 0.17,
+      "max_dd_pct": 0.29
+    }
+  },
+  "ablation": {
+    "adx_threshold": {
+      "BTCUSDT": {
+        "with_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": -0.408,
+          "pnl_usd": -40.81,
+          "max_dd_pct": 0.93
+        },
+        "without_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": -0.408,
+          "pnl_usd": -40.81,
+          "max_dd_pct": 0.93
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      },
+      "ETHUSDT": {
+        "with_filter": {
+          "trades": 2,
+          "win_rate": 50.0,
+          "pnl_pct": -0.131,
+          "pnl_usd": -13.08,
+          "max_dd_pct": 0.33
+        },
+        "without_filter": {
+          "trades": 2,
+          "win_rate": 50.0,
+          "pnl_pct": -0.131,
+          "pnl_usd": -13.08,
+          "max_dd_pct": 0.33
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      },
+      "XRPUSDT": {
+        "with_filter": {
+          "trades": 6,
+          "win_rate": 50.0,
+          "pnl_pct": 0.958,
+          "pnl_usd": 95.8,
+          "max_dd_pct": 0.27
+        },
+        "without_filter": {
+          "trades": 6,
+          "win_rate": 50.0,
+          "pnl_pct": 0.958,
+          "pnl_usd": 95.8,
+          "max_dd_pct": 0.27
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      },
+      "DOGEUSDT": {
+        "with_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": 0.157,
+          "pnl_usd": 15.71,
+          "max_dd_pct": 0.92
+        },
+        "without_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": 0.157,
+          "pnl_usd": 15.71,
+          "max_dd_pct": 0.92
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      },
+      "LINKUSDT": {
+        "with_filter": {
+          "trades": 4,
+          "win_rate": 50.0,
+          "pnl_pct": 0.002,
+          "pnl_usd": 0.17,
+          "max_dd_pct": 0.29
+        },
+        "without_filter": {
+          "trades": 5,
+          "win_rate": 60.0,
+          "pnl_pct": 0.178,
+          "pnl_usd": 17.78,
+          "max_dd_pct": 0.29
+        },
+        "delta_trades": 1,
+        "delta_wr": 10.0,
+        "delta_pnl_pct": 0.176
+      }
+    },
+    "adx_growth": {
+      "BTCUSDT": {
+        "with_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": -0.408,
+          "pnl_usd": -40.81,
+          "max_dd_pct": 0.93
+        },
+        "without_filter": {
+          "trades": 15,
+          "win_rate": 40.0,
+          "pnl_pct": 0.697,
+          "pnl_usd": 69.67,
+          "max_dd_pct": 0.72
+        },
+        "delta_trades": 8,
+        "delta_wr": 11.4,
+        "delta_pnl_pct": 1.105
+      },
+      "ETHUSDT": {
+        "with_filter": {
+          "trades": 2,
+          "win_rate": 50.0,
+          "pnl_pct": -0.131,
+          "pnl_usd": -13.08,
+          "max_dd_pct": 0.33
+        },
+        "without_filter": {
+          "trades": 11,
+          "win_rate": 36.4,
+          "pnl_pct": 0.109,
+          "pnl_usd": 10.87,
+          "max_dd_pct": 0.37
+        },
+        "delta_trades": 9,
+        "delta_wr": -13.6,
+        "delta_pnl_pct": 0.24
+      },
+      "XRPUSDT": {
+        "with_filter": {
+          "trades": 6,
+          "win_rate": 50.0,
+          "pnl_pct": 0.958,
+          "pnl_usd": 95.8,
+          "max_dd_pct": 0.27
+        },
+        "without_filter": {
+          "trades": 15,
+          "win_rate": 40.0,
+          "pnl_pct": 1.119,
+          "pnl_usd": 111.91,
+          "max_dd_pct": 0.51
+        },
+        "delta_trades": 9,
+        "delta_wr": -10.0,
+        "delta_pnl_pct": 0.161
+      },
+      "DOGEUSDT": {
+        "with_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": 0.157,
+          "pnl_usd": 15.71,
+          "max_dd_pct": 0.92
+        },
+        "without_filter": {
+          "trades": 12,
+          "win_rate": 50.0,
+          "pnl_pct": 0.547,
+          "pnl_usd": 54.71,
+          "max_dd_pct": 0.42
+        },
+        "delta_trades": 5,
+        "delta_wr": 21.4,
+        "delta_pnl_pct": 0.39
+      },
+      "LINKUSDT": {
+        "with_filter": {
+          "trades": 4,
+          "win_rate": 50.0,
+          "pnl_pct": 0.002,
+          "pnl_usd": 0.17,
+          "max_dd_pct": 0.29
+        },
+        "without_filter": {
+          "trades": 14,
+          "win_rate": 42.9,
+          "pnl_pct": -0.08,
+          "pnl_usd": -8.04,
+          "max_dd_pct": 0.98
+        },
+        "delta_trades": 10,
+        "delta_wr": -7.1,
+        "delta_pnl_pct": -0.082
+      }
+    },
+    "composite_threshold": {
+      "BTCUSDT": {
+        "with_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": -0.408,
+          "pnl_usd": -40.81,
+          "max_dd_pct": 0.93
+        },
+        "without_filter": {
+          "trades": 19,
+          "win_rate": 42.1,
+          "pnl_pct": 0.816,
+          "pnl_usd": 81.63,
+          "max_dd_pct": 0.89
+        },
+        "delta_trades": 12,
+        "delta_wr": 13.5,
+        "delta_pnl_pct": 1.224
+      },
+      "ETHUSDT": {
+        "with_filter": {
+          "trades": 2,
+          "win_rate": 50.0,
+          "pnl_pct": -0.131,
+          "pnl_usd": -13.08,
+          "max_dd_pct": 0.33
+        },
+        "without_filter": {
+          "trades": 12,
+          "win_rate": 58.3,
+          "pnl_pct": 2.689,
+          "pnl_usd": 268.86,
+          "max_dd_pct": 1.03
+        },
+        "delta_trades": 10,
+        "delta_wr": 8.3,
+        "delta_pnl_pct": 2.82
+      },
+      "XRPUSDT": {
+        "with_filter": {
+          "trades": 6,
+          "win_rate": 50.0,
+          "pnl_pct": 0.958,
+          "pnl_usd": 95.8,
+          "max_dd_pct": 0.27
+        },
+        "without_filter": {
+          "trades": 21,
+          "win_rate": 38.1,
+          "pnl_pct": 0.546,
+          "pnl_usd": 54.59,
+          "max_dd_pct": 1.72
+        },
+        "delta_trades": 15,
+        "delta_wr": -11.9,
+        "delta_pnl_pct": -0.412
+      },
+      "DOGEUSDT": {
+        "with_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": 0.157,
+          "pnl_usd": 15.71,
+          "max_dd_pct": 0.92
+        },
+        "without_filter": {
+          "trades": 17,
+          "win_rate": 23.5,
+          "pnl_pct": -0.576,
+          "pnl_usd": -57.56,
+          "max_dd_pct": 2.54
+        },
+        "delta_trades": 10,
+        "delta_wr": -5.1,
+        "delta_pnl_pct": -0.733
+      },
+      "LINKUSDT": {
+        "with_filter": {
+          "trades": 4,
+          "win_rate": 50.0,
+          "pnl_pct": 0.002,
+          "pnl_usd": 0.17,
+          "max_dd_pct": 0.29
+        },
+        "without_filter": {
+          "trades": 15,
+          "win_rate": 46.7,
+          "pnl_pct": 2.26,
+          "pnl_usd": 225.99,
+          "max_dd_pct": 1.03
+        },
+        "delta_trades": 11,
+        "delta_wr": -3.3,
+        "delta_pnl_pct": 2.258
+      }
+    },
+    "ema_trend": {
+      "BTCUSDT": {
+        "with_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": -0.408,
+          "pnl_usd": -40.81,
+          "max_dd_pct": 0.93
+        },
+        "without_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": -0.408,
+          "pnl_usd": -40.81,
+          "max_dd_pct": 0.93
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      },
+      "ETHUSDT": {
+        "with_filter": {
+          "trades": 2,
+          "win_rate": 50.0,
+          "pnl_pct": -0.131,
+          "pnl_usd": -13.08,
+          "max_dd_pct": 0.33
+        },
+        "without_filter": {
+          "trades": 2,
+          "win_rate": 50.0,
+          "pnl_pct": -0.131,
+          "pnl_usd": -13.08,
+          "max_dd_pct": 0.33
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      },
+      "XRPUSDT": {
+        "with_filter": {
+          "trades": 6,
+          "win_rate": 50.0,
+          "pnl_pct": 0.958,
+          "pnl_usd": 95.8,
+          "max_dd_pct": 0.27
+        },
+        "without_filter": {
+          "trades": 6,
+          "win_rate": 50.0,
+          "pnl_pct": 0.958,
+          "pnl_usd": 95.8,
+          "max_dd_pct": 0.27
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      },
+      "DOGEUSDT": {
+        "with_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": 0.157,
+          "pnl_usd": 15.71,
+          "max_dd_pct": 0.92
+        },
+        "without_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": 0.157,
+          "pnl_usd": 15.71,
+          "max_dd_pct": 0.92
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      },
+      "LINKUSDT": {
+        "with_filter": {
+          "trades": 4,
+          "win_rate": 50.0,
+          "pnl_pct": 0.002,
+          "pnl_usd": 0.17,
+          "max_dd_pct": 0.29
+        },
+        "without_filter": {
+          "trades": 4,
+          "win_rate": 50.0,
+          "pnl_pct": 0.002,
+          "pnl_usd": 0.17,
+          "max_dd_pct": 0.29
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      }
+    },
+    "rsi_filter": {
+      "BTCUSDT": {
+        "with_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": -0.408,
+          "pnl_usd": -40.81,
+          "max_dd_pct": 0.93
+        },
+        "without_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": -0.408,
+          "pnl_usd": -40.81,
+          "max_dd_pct": 0.93
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      },
+      "ETHUSDT": {
+        "with_filter": {
+          "trades": 2,
+          "win_rate": 50.0,
+          "pnl_pct": -0.131,
+          "pnl_usd": -13.08,
+          "max_dd_pct": 0.33
+        },
+        "without_filter": {
+          "trades": 2,
+          "win_rate": 50.0,
+          "pnl_pct": -0.131,
+          "pnl_usd": -13.08,
+          "max_dd_pct": 0.33
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      },
+      "XRPUSDT": {
+        "with_filter": {
+          "trades": 6,
+          "win_rate": 50.0,
+          "pnl_pct": 0.958,
+          "pnl_usd": 95.8,
+          "max_dd_pct": 0.27
+        },
+        "without_filter": {
+          "trades": 6,
+          "win_rate": 50.0,
+          "pnl_pct": 0.958,
+          "pnl_usd": 95.8,
+          "max_dd_pct": 0.27
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      },
+      "DOGEUSDT": {
+        "with_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": 0.157,
+          "pnl_usd": 15.71,
+          "max_dd_pct": 0.92
+        },
+        "without_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": 0.157,
+          "pnl_usd": 15.71,
+          "max_dd_pct": 0.92
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      },
+      "LINKUSDT": {
+        "with_filter": {
+          "trades": 4,
+          "win_rate": 50.0,
+          "pnl_pct": 0.002,
+          "pnl_usd": 0.17,
+          "max_dd_pct": 0.29
+        },
+        "without_filter": {
+          "trades": 4,
+          "win_rate": 50.0,
+          "pnl_pct": 0.002,
+          "pnl_usd": 0.17,
+          "max_dd_pct": 0.29
+        },
+        "delta_trades": 0,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 0.0
+      }
+    },
+    "btc_1d_ema50": {
+      "BTCUSDT": {
+        "with_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": -0.408,
+          "pnl_usd": -40.81,
+          "max_dd_pct": 0.93
+        },
+        "without_filter": {
+          "trades": 9,
+          "win_rate": 33.3,
+          "pnl_pct": -0.495,
+          "pnl_usd": -49.47,
+          "max_dd_pct": 1.02
+        },
+        "delta_trades": 2,
+        "delta_wr": 4.7,
+        "delta_pnl_pct": -0.087
+      },
+      "ETHUSDT": {
+        "with_filter": {
+          "trades": 2,
+          "win_rate": 50.0,
+          "pnl_pct": -0.131,
+          "pnl_usd": -13.08,
+          "max_dd_pct": 0.33
+        },
+        "without_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": -0.606,
+          "pnl_usd": -60.56,
+          "max_dd_pct": 1.35
+        },
+        "delta_trades": 5,
+        "delta_wr": -21.4,
+        "delta_pnl_pct": -0.475
+      },
+      "XRPUSDT": {
+        "with_filter": {
+          "trades": 6,
+          "win_rate": 50.0,
+          "pnl_pct": 0.958,
+          "pnl_usd": 95.8,
+          "max_dd_pct": 0.27
+        },
+        "without_filter": {
+          "trades": 8,
+          "win_rate": 37.5,
+          "pnl_pct": 0.589,
+          "pnl_usd": 58.87,
+          "max_dd_pct": 0.63
+        },
+        "delta_trades": 2,
+        "delta_wr": -12.5,
+        "delta_pnl_pct": -0.369
+      },
+      "DOGEUSDT": {
+        "with_filter": {
+          "trades": 7,
+          "win_rate": 28.6,
+          "pnl_pct": 0.157,
+          "pnl_usd": 15.71,
+          "max_dd_pct": 0.92
+        },
+        "without_filter": {
+          "trades": 10,
+          "win_rate": 40.0,
+          "pnl_pct": 0.312,
+          "pnl_usd": 31.22,
+          "max_dd_pct": 0.79
+        },
+        "delta_trades": 3,
+        "delta_wr": 11.4,
+        "delta_pnl_pct": 0.155
+      },
+      "LINKUSDT": {
+        "with_filter": {
+          "trades": 4,
+          "win_rate": 50.0,
+          "pnl_pct": 0.002,
+          "pnl_usd": 0.17,
+          "max_dd_pct": 0.29
+        },
+        "without_filter": {
+          "trades": 6,
+          "win_rate": 33.3,
+          "pnl_pct": -0.801,
+          "pnl_usd": -80.1,
+          "max_dd_pct": 1.06
+        },
+        "delta_trades": 2,
+        "delta_wr": -16.7,
+        "delta_pnl_pct": -0.803
+      }
+    }
+  },
+  "rejected_signals": {
+    "BTCUSDT": {
+      "adx_threshold": {
+        "count": 73,
+        "hypo_wr": 47.9,
+        "hypo_avg_pnl_pct": 1.273
+      },
+      "adx_growth": {
+        "count": 220,
+        "hypo_wr": 22.3,
+        "hypo_avg_pnl_pct": -1.142
+      },
+      "composite_threshold": {
+        "count": 261,
+        "hypo_wr": 38.7,
+        "hypo_avg_pnl_pct": 0.466
+      },
+      "ema_trend": {
+        "count": 0,
+        "hypo_wr": 0,
+        "hypo_pnl_pct": 0
+      },
+      "rsi_filter": {
+        "count": 0,
+        "hypo_wr": 0,
+        "hypo_pnl_pct": 0
+      },
+      "btc_1d_ema50": {
+        "count": 4,
+        "hypo_wr": 25.0,
+        "hypo_avg_pnl_pct": -1.097
+      }
+    },
+    "ETHUSDT": {
+      "adx_threshold": {
+        "count": 103,
+        "hypo_wr": 48.5,
+        "hypo_avg_pnl_pct": 1.387
+      },
+      "adx_growth": {
+        "count": 244,
+        "hypo_wr": 23.8,
+        "hypo_avg_pnl_pct": -1.463
+      },
+      "composite_threshold": {
+        "count": 248,
+        "hypo_wr": 39.5,
+        "hypo_avg_pnl_pct": 0.602
+      },
+      "ema_trend": {
+        "count": 0,
+        "hypo_wr": 0,
+        "hypo_pnl_pct": 0
+      },
+      "rsi_filter": {
+        "count": 0,
+        "hypo_wr": 0,
+        "hypo_pnl_pct": 0
+      },
+      "btc_1d_ema50": {
+        "count": 6,
+        "hypo_wr": 16.7,
+        "hypo_avg_pnl_pct": -1.693
+      }
+    },
+    "XRPUSDT": {
+      "adx_threshold": {
+        "count": 120,
+        "hypo_wr": 50.0,
+        "hypo_avg_pnl_pct": 1.703
+      },
+      "adx_growth": {
+        "count": 230,
+        "hypo_wr": 22.2,
+        "hypo_avg_pnl_pct": -0.985
+      },
+      "composite_threshold": {
+        "count": 177,
+        "hypo_wr": 36.2,
+        "hypo_avg_pnl_pct": 0.289
+      },
+      "ema_trend": {
+        "count": 0,
+        "hypo_wr": 0,
+        "hypo_pnl_pct": 0
+      },
+      "rsi_filter": {
+        "count": 0,
+        "hypo_wr": 0,
+        "hypo_pnl_pct": 0
+      },
+      "btc_1d_ema50": {
+        "count": 6,
+        "hypo_wr": 83.3,
+        "hypo_avg_pnl_pct": 4.428
+      }
+    },
+    "DOGEUSDT": {
+      "adx_threshold": {
+        "count": 127,
+        "hypo_wr": 48.0,
+        "hypo_avg_pnl_pct": 1.234
+      },
+      "adx_growth": {
+        "count": 225,
+        "hypo_wr": 21.3,
+        "hypo_avg_pnl_pct": -1.724
+      },
+      "composite_threshold": {
+        "count": 185,
+        "hypo_wr": 35.1,
+        "hypo_avg_pnl_pct": 0.163
+      },
+      "ema_trend": {
+        "count": 0,
+        "hypo_wr": 0,
+        "hypo_pnl_pct": 0
+      },
+      "rsi_filter": {
+        "count": 0,
+        "hypo_wr": 0,
+        "hypo_pnl_pct": 0
+      },
+      "btc_1d_ema50": {
+        "count": 6,
+        "hypo_wr": 50.0,
+        "hypo_avg_pnl_pct": 2.487
+      }
+    },
+    "LINKUSDT": {
+      "adx_threshold": {
+        "count": 88,
+        "hypo_wr": 44.3,
+        "hypo_avg_pnl_pct": 1.062
+      },
+      "adx_growth": {
+        "count": 263,
+        "hypo_wr": 27.0,
+        "hypo_avg_pnl_pct": -0.958
+      },
+      "composite_threshold": {
+        "count": 227,
+        "hypo_wr": 37.9,
+        "hypo_avg_pnl_pct": 0.479
+      },
+      "ema_trend": {
+        "count": 0,
+        "hypo_wr": 0,
+        "hypo_pnl_pct": 0
+      },
+      "rsi_filter": {
+        "count": 0,
+        "hypo_wr": 0,
+        "hypo_pnl_pct": 0
+      },
+      "btc_1d_ema50": {
+        "count": 2,
+        "hypo_wr": 0.0,
+        "hypo_avg_pnl_pct": -4.022
+      }
+    }
+  },
+  "conclusion": {
+    "total_base_trades": 26,
+    "total_base_pnl_pct": 0.578,
+    "filters_status": {
+      "adx_threshold": "neutral",
+      "adx_growth": "overtight",
+      "composite_threshold": "overtight",
+      "ema_trend": "neutral",
+      "rsi_filter": "neutral",
+      "btc_1d_ema50": "working"
+    },
+    "recommendations": [
+      "adx_threshold: NEUTRAL — minimal impact (1 trades, +0.18% PnL).",
+      "adx_growth: OVERTIGHT — removing adds 41 trades with +1.81% PnL. Consider relaxing.",
+      "composite_threshold: OVERTIGHT — removing adds 58 trades with +5.16% PnL. Consider relaxing.",
+      "ema_trend: NEUTRAL — minimal impact (0 trades, +0.00% PnL).",
+      "rsi_filter: NEUTRAL — minimal impact (0 trades, +0.00% PnL).",
+      "btc_1d_ema50: WORKING — removing hurts PnL by -1.58%. Keep it."
+    ]
+  }
+}
