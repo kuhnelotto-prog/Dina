@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-04-12T11:49:40.021381",
+  "symbol_checked": "XRPUSDT",
+  "trades_checked": 3,
+  "issues": [
+    "[LOOK-AHEAD] Entry on same candle as signal (should be next candle open)",
+    "[COMMISSION] Backtest ignores trading commission (~0.12% round trip)"
+  ],
+  "checks": {
+    "entry_timing": "FAIL - entry on same candle as signal (look-ahead bias)",
+    "sl_tp_method": "PASS - uses high/low correctly",
+    "pnl_calculation": "PASS - matches manual calculation (no commission)",
+    "indicator_warmup": "PASS - 50 candle warm-up (minimal but acceptable)",
+    "data_gaps": "checked per symbol"
+  }
+}
