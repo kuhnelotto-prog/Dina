@@ -177,13 +177,16 @@ class BacktestPosition:
         return False
 
     def _partial_close(self, pct, price):
-        """Close pct of remaining position, book partial PnL."""
+        """Close pct of remaining position, book partial PnL (incl. commission)."""
         close_fraction = self.remaining_pct * pct
         if self.side == "long":
             pnl_pct = (price - self.entry_price) / self.entry_price * 100
         else:
             pnl_pct = (self.entry_price - price) / self.entry_price * 100
-        partial_pnl = self.size_usd * close_fraction * pnl_pct / 100
+        partial_size = self.size_usd * close_fraction
+        partial_pnl = partial_size * pnl_pct / 100
+        # Commission: 0.06% on the partial close (exit side only; entry already deducted)
+        partial_pnl -= partial_size * 0.0006
         self.partial_pnl_usd += partial_pnl
         self.remaining_pct -= close_fraction
 
@@ -199,8 +202,12 @@ class BacktestPosition:
             exit_pnl_pct = (self.entry_price - exit_price) / self.entry_price * 100
 
         # PnL = partial closes already booked + remaining fraction at exit
-        remaining_pnl = self.size_usd * self.remaining_pct * exit_pnl_pct / 100
-        self.pnl_usd = self.partial_pnl_usd + remaining_pnl
+        remaining_size = self.size_usd * self.remaining_pct
+        remaining_pnl = remaining_size * exit_pnl_pct / 100
+        # Commission: 0.06% entry (full size) + 0.06% exit (remaining size)
+        entry_commission = self.size_usd * 0.0006
+        exit_commission = remaining_size * 0.0006
+        self.pnl_usd = self.partial_pnl_usd + remaining_pnl - entry_commission - exit_commission
         self.pnl_pct = self.pnl_usd / self.size_usd * 100 if self.size_usd else 0
 
         step_info = f" step={self.trailing_step}" if self.trailing_step > 0 else ""
@@ -473,15 +480,45 @@ class Backtester:
         else:
             logger.info("BTC 1D EMA50 master filter DISABLED (no 1D data)")
 
+        # Pending signal: signal generated on candle[i], entry on open[i+1]
+        pending_signal = None  # dict with side, sl_pct, tp_pct, composite
+
         for i, (timestamp, row) in enumerate(df.iterrows()):
             if i % 50 == 0:
                 logger.info(f"Processed {i}/{len(df)} candles...")
 
             current_price = row['close']
-
-            # Update open positions with high/low for accurate SL/TP
+            candle_open = row['open']
             candle_high = row['high']
             candle_low = row['low']
+
+            # ── Execute pending signal at this candle's open (no look-ahead bias) ──
+            if pending_signal is not None and len(open_positions) == 0:
+                sig = pending_signal
+                pending_signal = None
+                entry_price = candle_open  # enter at open of next candle
+                if sig["side"] == "long":
+                    sl_price = entry_price * (1 - sig["sl_pct"])
+                    tp_price = entry_price * (1 + sig["tp_pct"])
+                else:
+                    sl_price = entry_price * (1 + sig["sl_pct"])
+                    tp_price = entry_price * (1 - sig["tp_pct"])
+                position_size = result.final_balance * 0.1
+                position = BacktestPosition(
+                    symbol=symbol,
+                    side=sig["side"],
+                    entry_price=entry_price,
+                    size_usd=position_size,
+                    sl_price=sl_price,
+                    tp_price=tp_price,
+                    timestamp=timestamp
+                )
+                open_positions[symbol] = position
+                logger.info(f"Opened {sig['side'].upper()}: {symbol} | Price: {entry_price:.2f} | Score: {sig['composite']:.3f}")
+            else:
+                pending_signal = None  # discard if position already open
+
+            # Update open positions with high/low for accurate SL/TP
             for sym in list(open_positions.keys()):
                 position = open_positions[sym]
                 closed, _ = position.update(current_price, high=candle_high, low=candle_low)
@@ -512,10 +549,8 @@ class Backtester:
                 # Determine BTC regime for dynamic thresholds
                 if btc_ema50 is not None:
                     if symbol == "BTCUSDT":
-                        # For BTC: use current price vs BTC EMA50 at same index
                         btc_regime = "BULL" if current_price > btc_ema50.iloc[i] else "BEAR"
                     else:
-                        # For alts: find closest BTC EMA50 by timestamp
                         try:
                             idx = btc_ema50.index.get_indexer([timestamp], method='nearest')[0]
                             btc_price = btc_df['close'].iloc[idx]
@@ -523,17 +558,15 @@ class Backtester:
                         except Exception:
                             btc_regime = "BULL"
                 else:
-                    btc_regime = "BULL"  # default for non-BTC symbols without BTC data
+                    btc_regime = "BULL"
 
                 threshold_long = THRESHOLD_LONG_BULL if btc_regime == "BULL" else THRESHOLD_LONG_BEAR
                 threshold_short = THRESHOLD_SHORT_BEAR if btc_regime == "BEAR" else THRESHOLD_SHORT_BULL
 
-                # Determine direction based on composite score
                 is_bullish = indicators["ema_fast"] > indicators["ema_slow"]
                 rsi = indicators.get("rsi", 50)
 
                 # ── BTC 1D EMA50 Master Filter ──
-                # LONG only if BTC > EMA50(1D), SHORT only if BTC < EMA50(1D)
                 btc_1d_allows_long = True
                 btc_1d_allows_short = True
                 if btc_1d_ema50 is not None:
@@ -545,57 +578,24 @@ class Backtester:
                             btc_1d_allows_long = btc_1d_close > btc_1d_ema_val
                             btc_1d_allows_short = btc_1d_close < btc_1d_ema_val
                     except Exception:
-                        pass  # fallback: allow both
+                        pass
 
-                # ── LONG entry ──
+                # Compute SL/TP percentages from ATR
+                atr_pct = indicators.get("atr_pct", 0)
+                if atr_pct > 0.1:
+                    sl_pct = 1.5 * atr_pct / 100
+                    tp_pct = 3.0 * atr_pct / 100
+                else:
+                    sl_pct = 0.03
+                    tp_pct = 0.05
+
+                # ── LONG signal (will execute on next candle open) ──
                 if composite > threshold_long and is_bullish and rsi < 70 and btc_1d_allows_long:
-                    atr_pct = indicators.get("atr_pct", 0)
-                    if atr_pct > 0.1:
-                        sl_pct = 1.5 * atr_pct / 100
-                        tp_pct = 3.0 * atr_pct / 100
-                    else:
-                        sl_pct = 0.03
-                        tp_pct = 0.05
-                    sl_price = current_price * (1 - sl_pct)
-                    tp_price = current_price * (1 + tp_pct)
-                    position_size = result.final_balance * 0.1
+                    pending_signal = {"side": "long", "sl_pct": sl_pct, "tp_pct": tp_pct, "composite": composite}
 
-                    position = BacktestPosition(
-                        symbol=symbol,
-                        side="long",
-                        entry_price=current_price,
-                        size_usd=position_size,
-                        sl_price=sl_price,
-                        tp_price=tp_price,
-                        timestamp=timestamp
-                    )
-                    open_positions[symbol] = position
-                    logger.info(f"Opened LONG: {symbol} | Price: {current_price:.2f} | Score: {composite:.3f}")
-
-                # ── SHORT entry ──
+                # ── SHORT signal (will execute on next candle open) ──
                 elif composite < -threshold_short and not is_bullish and rsi > 30 and btc_1d_allows_short:
-                    atr_pct = indicators.get("atr_pct", 0)
-                    if atr_pct > 0.1:
-                        sl_pct = 1.5 * atr_pct / 100
-                        tp_pct = 3.0 * atr_pct / 100
-                    else:
-                        sl_pct = 0.03
-                        tp_pct = 0.05
-                    sl_price = current_price * (1 + sl_pct)
-                    tp_price = current_price * (1 - tp_pct)
-                    position_size = result.final_balance * 0.1
-
-                    position = BacktestPosition(
-                        symbol=symbol,
-                        side="short",
-                        entry_price=current_price,
-                        size_usd=position_size,
-                        sl_price=sl_price,
-                        tp_price=tp_price,
-                        timestamp=timestamp
-                    )
-                    open_positions[symbol] = position
-                    logger.info(f"Opened SHORT: {symbol} | Price: {current_price:.2f} | Score: {composite:.3f}")
+                    pending_signal = {"side": "short", "sl_pct": sl_pct, "tp_pct": tp_pct, "composite": composite}
 
         for sym, position in list(open_positions.items()):
             last_price = df.iloc[-1]['close']

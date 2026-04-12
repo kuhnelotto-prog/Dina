@@ -231,10 +231,32 @@ def run_instrumented_backtest(df, symbol, btc_df, btc_1d_df, disabled_filters=No
     if btc_1d_df is not None and len(btc_1d_df) >= 50:
         btc_1d_ema50 = btc_1d_df['close'].ewm(span=50, adjust=False).mean()
 
+    # Pending signal for next-candle-open entry (no look-ahead bias)
+    pending_signal = None
+
     for i, (timestamp, row) in enumerate(df.iterrows()):
         current_price = row['close']
+        candle_open = row['open']
         candle_high = row['high']
         candle_low = row['low']
+
+        # Execute pending signal at this candle's open
+        if pending_signal is not None and len(open_positions) == 0:
+            sig = pending_signal
+            pending_signal = None
+            entry_price = candle_open
+            if sig["side"] == "long":
+                sl_price = entry_price * (1 - sig["sl_pct"])
+                tp_price = entry_price * (1 + sig["tp_pct"])
+            else:
+                sl_price = entry_price * (1 + sig["sl_pct"])
+                tp_price = entry_price * (1 - sig["tp_pct"])
+            funnel.passed_all += 1
+            pos = BacktestPosition(symbol, sig["side"], entry_price, result.final_balance * 0.1,
+                                   sl_price, tp_price, timestamp)
+            open_positions[symbol] = pos
+        else:
+            pending_signal = None
 
         for sym in list(open_positions.keys()):
             pos = open_positions[sym]
@@ -335,7 +357,6 @@ def run_instrumented_backtest(df, symbol, btc_df, btc_1d_df, disabled_filters=No
             long_rejected = True
 
         if not long_rejected:
-            # Check if signal actually passes all filters
             adx_ok = adx_val >= 18.0 and (adx_val - adx_prev) >= 0.5
             if ("adx_threshold" in disabled or "adx_growth" in disabled):
                 adx_ok = True
@@ -347,18 +368,13 @@ def run_instrumented_backtest(df, symbol, btc_df, btc_1d_df, disabled_filters=No
                 adx_ok
             )
             if passes_long:
-                funnel.passed_all += 1
-                sl_price = current_price * (1 - sl_pct)
-                tp_price = current_price * (1 + tp_pct)
-                pos = BacktestPosition(symbol, "long", current_price, result.final_balance * 0.1,
-                                       sl_price, tp_price, timestamp)
-                open_positions[symbol] = pos
+                pending_signal = {"side": "long", "sl_pct": sl_pct, "tp_pct": tp_pct}
                 continue
 
         # ── Try SHORT ──
         short_rejected = False
         if "adx_threshold" not in disabled and adx_val < 18.0:
-            if not long_rejected:  # avoid double-counting
+            if not long_rejected:
                 make_rejected("short", "adx_threshold")
             short_rejected = True
         elif "adx_growth" not in disabled and (adx_val - adx_prev) < 0.5:
@@ -390,12 +406,7 @@ def run_instrumented_backtest(df, symbol, btc_df, btc_1d_df, disabled_filters=No
                 adx_ok
             )
             if passes_short:
-                funnel.passed_all += 1
-                sl_price = current_price * (1 + sl_pct)
-                tp_price = current_price * (1 - tp_pct)
-                pos = BacktestPosition(symbol, "short", current_price, result.final_balance * 0.1,
-                                       sl_price, tp_price, timestamp)
-                open_positions[symbol] = pos
+                pending_signal = {"side": "short", "sl_pct": sl_pct, "tp_pct": tp_pct}
 
     # Close remaining
     for sym, pos in list(open_positions.items()):

@@ -119,37 +119,37 @@
     "BTCUSDT": {
       "trades": 7,
       "win_rate": 28.6,
-      "pnl_pct": -0.408,
-      "pnl_usd": -40.81,
-      "max_dd_pct": 0.93
+      "pnl_pct": -0.492,
+      "pnl_usd": -49.17,
+      "max_dd_pct": 0.99
     },
     "ETHUSDT": {
       "trades": 2,
       "win_rate": 50.0,
-      "pnl_pct": -0.131,
-      "pnl_usd": -13.08,
-      "max_dd_pct": 0.33
+      "pnl_pct": -0.155,
+      "pnl_usd": -15.48,
+      "max_dd_pct": 0.34
     },
     "XRPUSDT": {
       "trades": 6,
       "win_rate": 50.0,
-      "pnl_pct": 0.958,
-      "pnl_usd": 95.8,
-      "max_dd_pct": 0.27
+      "pnl_pct": 0.885,
+      "pnl_usd": 88.54,
+      "max_dd_pct": 0.29
     },
     "DOGEUSDT": {
       "trades": 7,
       "win_rate": 28.6,
-      "pnl_pct": 0.157,
-      "pnl_usd": 15.71,
-      "max_dd_pct": 0.92
+      "pnl_pct": 0.073,
+      "pnl_usd": 7.3,
+      "max_dd_pct": 0.98
     },
     "LINKUSDT": {
       "trades": 4,
       "win_rate": 50.0,
-      "pnl_pct": 0.002,
-      "pnl_usd": 0.17,
-      "max_dd_pct": 0.29
+      "pnl_pct": -0.046,
+      "pnl_usd": -4.63,
+      "max_dd_pct": 0.3
     }
   },
   "ablation": {
@@ -158,16 +158,16 @@
         "with_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": -0.408,
-          "pnl_usd": -40.81,
-          "max_dd_pct": 0.93
+          "pnl_pct": -0.492,
+          "pnl_usd": -49.17,
+          "max_dd_pct": 0.99
         },
         "without_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": -0.408,
-          "pnl_usd": -40.81,
-          "max_dd_pct": 0.93
+          "pnl_pct": -0.492,
+          "pnl_usd": -49.17,
+          "max_dd_pct": 0.99
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -177,16 +177,16 @@
         "with_filter": {
           "trades": 2,
           "win_rate": 50.0,
-          "pnl_pct": -0.131,
-          "pnl_usd": -13.08,
-          "max_dd_pct": 0.33
+          "pnl_pct": -0.155,
+          "pnl_usd": -15.48,
+          "max_dd_pct": 0.34
         },
         "without_filter": {
           "trades": 2,
           "win_rate": 50.0,
-          "pnl_pct": -0.131,
-          "pnl_usd": -13.08,
-          "max_dd_pct": 0.33
+          "pnl_pct": -0.155,
+          "pnl_usd": -15.48,
+          "max_dd_pct": 0.34
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -196,16 +196,16 @@
         "with_filter": {
           "trades": 6,
           "win_rate": 50.0,
-          "pnl_pct": 0.958,
-          "pnl_usd": 95.8,
-          "max_dd_pct": 0.27
+          "pnl_pct": 0.885,
+          "pnl_usd": 88.54,
+          "max_dd_pct": 0.29
         },
         "without_filter": {
           "trades": 6,
           "win_rate": 50.0,
-          "pnl_pct": 0.958,
-          "pnl_usd": 95.8,
-          "max_dd_pct": 0.27
+          "pnl_pct": 0.885,
+          "pnl_usd": 88.54,
+          "max_dd_pct": 0.29
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -215,16 +215,16 @@
         "with_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": 0.157,
-          "pnl_usd": 15.71,
-          "max_dd_pct": 0.92
+          "pnl_pct": 0.073,
+          "pnl_usd": 7.3,
+          "max_dd_pct": 0.98
         },
         "without_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": 0.157,
-          "pnl_usd": 15.71,
-          "max_dd_pct": 0.92
+          "pnl_pct": 0.073,
+          "pnl_usd": 7.3,
+          "max_dd_pct": 0.98
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -234,20 +234,20 @@
         "with_filter": {
           "trades": 4,
           "win_rate": 50.0,
-          "pnl_pct": 0.002,
-          "pnl_usd": 0.17,
-          "max_dd_pct": 0.29
+          "pnl_pct": -0.046,
+          "pnl_usd": -4.63,
+          "max_dd_pct": 0.3
         },
         "without_filter": {
           "trades": 5,
           "win_rate": 60.0,
-          "pnl_pct": 0.178,
-          "pnl_usd": 17.78,
-          "max_dd_pct": 0.29
+          "pnl_pct": 0.118,
+          "pnl_usd": 11.77,
+          "max_dd_pct": 0.3
         },
         "delta_trades": 1,
         "delta_wr": 10.0,
-        "delta_pnl_pct": 0.176
+        "delta_pnl_pct": 0.164
       }
     },
     "adx_growth": {
@@ -255,96 +255,96 @@
         "with_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": -0.408,
-          "pnl_usd": -40.81,
-          "max_dd_pct": 0.93
+          "pnl_pct": -0.492,
+          "pnl_usd": -49.17,
+          "max_dd_pct": 0.99
         },
         "without_filter": {
           "trades": 15,
           "win_rate": 40.0,
-          "pnl_pct": 0.697,
-          "pnl_usd": 69.67,
-          "max_dd_pct": 0.72
+          "pnl_pct": 0.516,
+          "pnl_usd": 51.57,
+          "max_dd_pct": 0.78
         },
         "delta_trades": 8,
         "delta_wr": 11.4,
-        "delta_pnl_pct": 1.105
+        "delta_pnl_pct": 1.008
       },
       "ETHUSDT": {
         "with_filter": {
           "trades": 2,
           "win_rate": 50.0,
-          "pnl_pct": -0.131,
-          "pnl_usd": -13.08,
-          "max_dd_pct": 0.33
+          "pnl_pct": -0.155,
+          "pnl_usd": -15.48,
+          "max_dd_pct": 0.34
         },
         "without_filter": {
           "trades": 11,
           "win_rate": 36.4,
-          "pnl_pct": 0.109,
-          "pnl_usd": 10.87,
-          "max_dd_pct": 0.37
+          "pnl_pct": -0.023,
+          "pnl_usd": -2.33,
+          "max_dd_pct": 0.39
         },
         "delta_trades": 9,
         "delta_wr": -13.6,
-        "delta_pnl_pct": 0.24
+        "delta_pnl_pct": 0.132
       },
       "XRPUSDT": {
         "with_filter": {
           "trades": 6,
           "win_rate": 50.0,
-          "pnl_pct": 0.958,
-          "pnl_usd": 95.8,
-          "max_dd_pct": 0.27
+          "pnl_pct": 0.885,
+          "pnl_usd": 88.54,
+          "max_dd_pct": 0.29
         },
         "without_filter": {
           "trades": 15,
           "win_rate": 40.0,
-          "pnl_pct": 1.119,
-          "pnl_usd": 111.91,
-          "max_dd_pct": 0.51
+          "pnl_pct": 0.937,
+          "pnl_usd": 93.74,
+          "max_dd_pct": 0.53
         },
         "delta_trades": 9,
         "delta_wr": -10.0,
-        "delta_pnl_pct": 0.161
+        "delta_pnl_pct": 0.052
       },
       "DOGEUSDT": {
         "with_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": 0.157,
-          "pnl_usd": 15.71,
-          "max_dd_pct": 0.92
+          "pnl_pct": 0.073,
+          "pnl_usd": 7.3,
+          "max_dd_pct": 0.98
         },
         "without_filter": {
           "trades": 12,
           "win_rate": 50.0,
-          "pnl_pct": 0.547,
-          "pnl_usd": 54.71,
-          "max_dd_pct": 0.42
+          "pnl_pct": 0.402,
+          "pnl_usd": 40.25,
+          "max_dd_pct": 0.44
         },
         "delta_trades": 5,
         "delta_wr": 21.4,
-        "delta_pnl_pct": 0.39
+        "delta_pnl_pct": 0.329
       },
       "LINKUSDT": {
         "with_filter": {
           "trades": 4,
           "win_rate": 50.0,
-          "pnl_pct": 0.002,
-          "pnl_usd": 0.17,
-          "max_dd_pct": 0.29
+          "pnl_pct": -0.046,
+          "pnl_usd": -4.63,
+          "max_dd_pct": 0.3
         },
         "without_filter": {
           "trades": 14,
           "win_rate": 42.9,
-          "pnl_pct": -0.08,
-          "pnl_usd": -8.04,
-          "max_dd_pct": 0.98
+          "pnl_pct": -0.248,
+          "pnl_usd": -24.81,
+          "max_dd_pct": 1.02
         },
         "delta_trades": 10,
         "delta_wr": -7.1,
-        "delta_pnl_pct": -0.082
+        "delta_pnl_pct": -0.202
       }
     },
     "composite_threshold": {
@@ -352,96 +352,96 @@
         "with_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": -0.408,
-          "pnl_usd": -40.81,
-          "max_dd_pct": 0.93
+          "pnl_pct": -0.492,
+          "pnl_usd": -49.17,
+          "max_dd_pct": 0.99
         },
         "without_filter": {
           "trades": 19,
           "win_rate": 42.1,
-          "pnl_pct": 0.816,
-          "pnl_usd": 81.63,
-          "max_dd_pct": 0.89
+          "pnl_pct": 0.587,
+          "pnl_usd": 58.68,
+          "max_dd_pct": 1.05
         },
         "delta_trades": 12,
         "delta_wr": 13.5,
-        "delta_pnl_pct": 1.224
+        "delta_pnl_pct": 1.079
       },
       "ETHUSDT": {
         "with_filter": {
           "trades": 2,
           "win_rate": 50.0,
-          "pnl_pct": -0.131,
-          "pnl_usd": -13.08,
-          "max_dd_pct": 0.33
+          "pnl_pct": -0.155,
+          "pnl_usd": -15.48,
+          "max_dd_pct": 0.34
         },
         "without_filter": {
           "trades": 12,
           "win_rate": 58.3,
-          "pnl_pct": 2.689,
-          "pnl_usd": 268.86,
-          "max_dd_pct": 1.03
+          "pnl_pct": 2.541,
+          "pnl_usd": 254.12,
+          "max_dd_pct": 1.07
         },
         "delta_trades": 10,
         "delta_wr": 8.3,
-        "delta_pnl_pct": 2.82
+        "delta_pnl_pct": 2.696
       },
       "XRPUSDT": {
         "with_filter": {
           "trades": 6,
           "win_rate": 50.0,
-          "pnl_pct": 0.958,
-          "pnl_usd": 95.8,
-          "max_dd_pct": 0.27
+          "pnl_pct": 0.885,
+          "pnl_usd": 88.54,
+          "max_dd_pct": 0.29
         },
         "without_filter": {
           "trades": 21,
           "win_rate": 38.1,
-          "pnl_pct": 0.546,
-          "pnl_usd": 54.59,
-          "max_dd_pct": 1.72
+          "pnl_pct": 0.293,
+          "pnl_usd": 29.29,
+          "max_dd_pct": 1.89
         },
         "delta_trades": 15,
         "delta_wr": -11.9,
-        "delta_pnl_pct": -0.412
+        "delta_pnl_pct": -0.592
       },
       "DOGEUSDT": {
         "with_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": 0.157,
-          "pnl_usd": 15.71,
-          "max_dd_pct": 0.92
+          "pnl_pct": 0.073,
+          "pnl_usd": 7.3,
+          "max_dd_pct": 0.98
         },
         "without_filter": {
-          "trades": 17,
-          "win_rate": 23.5,
-          "pnl_pct": -0.576,
-          "pnl_usd": -57.56,
-          "max_dd_pct": 2.54
+          "trades": 16,
+          "win_rate": 25.0,
+          "pnl_pct": -0.766,
+          "pnl_usd": -76.64,
+          "max_dd_pct": 2.68
         },
-        "delta_trades": 10,
-        "delta_wr": -5.1,
-        "delta_pnl_pct": -0.733
+        "delta_trades": 9,
+        "delta_wr": -3.6,
+        "delta_pnl_pct": -0.839
       },
       "LINKUSDT": {
         "with_filter": {
           "trades": 4,
           "win_rate": 50.0,
-          "pnl_pct": 0.002,
-          "pnl_usd": 0.17,
-          "max_dd_pct": 0.29
+          "pnl_pct": -0.046,
+          "pnl_usd": -4.63,
+          "max_dd_pct": 0.3
         },
         "without_filter": {
-          "trades": 15,
-          "win_rate": 46.7,
-          "pnl_pct": 2.26,
-          "pnl_usd": 225.99,
-          "max_dd_pct": 1.03
+          "trades": 14,
+          "win_rate": 50.0,
+          "pnl_pct": 2.089,
+          "pnl_usd": 208.85,
+          "max_dd_pct": 1.08
         },
-        "delta_trades": 11,
-        "delta_wr": -3.3,
-        "delta_pnl_pct": 2.258
+        "delta_trades": 10,
+        "delta_wr": 0.0,
+        "delta_pnl_pct": 2.135
       }
     },
     "ema_trend": {
@@ -449,16 +449,16 @@
         "with_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": -0.408,
-          "pnl_usd": -40.81,
-          "max_dd_pct": 0.93
+          "pnl_pct": -0.492,
+          "pnl_usd": -49.17,
+          "max_dd_pct": 0.99
         },
         "without_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": -0.408,
-          "pnl_usd": -40.81,
-          "max_dd_pct": 0.93
+          "pnl_pct": -0.492,
+          "pnl_usd": -49.17,
+          "max_dd_pct": 0.99
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -468,16 +468,16 @@
         "with_filter": {
           "trades": 2,
           "win_rate": 50.0,
-          "pnl_pct": -0.131,
-          "pnl_usd": -13.08,
-          "max_dd_pct": 0.33
+          "pnl_pct": -0.155,
+          "pnl_usd": -15.48,
+          "max_dd_pct": 0.34
         },
         "without_filter": {
           "trades": 2,
           "win_rate": 50.0,
-          "pnl_pct": -0.131,
-          "pnl_usd": -13.08,
-          "max_dd_pct": 0.33
+          "pnl_pct": -0.155,
+          "pnl_usd": -15.48,
+          "max_dd_pct": 0.34
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -487,16 +487,16 @@
         "with_filter": {
           "trades": 6,
           "win_rate": 50.0,
-          "pnl_pct": 0.958,
-          "pnl_usd": 95.8,
-          "max_dd_pct": 0.27
+          "pnl_pct": 0.885,
+          "pnl_usd": 88.54,
+          "max_dd_pct": 0.29
         },
         "without_filter": {
           "trades": 6,
           "win_rate": 50.0,
-          "pnl_pct": 0.958,
-          "pnl_usd": 95.8,
-          "max_dd_pct": 0.27
+          "pnl_pct": 0.885,
+          "pnl_usd": 88.54,
+          "max_dd_pct": 0.29
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -506,16 +506,16 @@
         "with_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": 0.157,
-          "pnl_usd": 15.71,
-          "max_dd_pct": 0.92
+          "pnl_pct": 0.073,
+          "pnl_usd": 7.3,
+          "max_dd_pct": 0.98
         },
         "without_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": 0.157,
-          "pnl_usd": 15.71,
-          "max_dd_pct": 0.92
+          "pnl_pct": 0.073,
+          "pnl_usd": 7.3,
+          "max_dd_pct": 0.98
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -525,16 +525,16 @@
         "with_filter": {
           "trades": 4,
           "win_rate": 50.0,
-          "pnl_pct": 0.002,
-          "pnl_usd": 0.17,
-          "max_dd_pct": 0.29
+          "pnl_pct": -0.046,
+          "pnl_usd": -4.63,
+          "max_dd_pct": 0.3
         },
         "without_filter": {
           "trades": 4,
           "win_rate": 50.0,
-          "pnl_pct": 0.002,
-          "pnl_usd": 0.17,
-          "max_dd_pct": 0.29
+          "pnl_pct": -0.046,
+          "pnl_usd": -4.63,
+          "max_dd_pct": 0.3
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -546,16 +546,16 @@
         "with_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": -0.408,
-          "pnl_usd": -40.81,
-          "max_dd_pct": 0.93
+          "pnl_pct": -0.492,
+          "pnl_usd": -49.17,
+          "max_dd_pct": 0.99
         },
         "without_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": -0.408,
-          "pnl_usd": -40.81,
-          "max_dd_pct": 0.93
+          "pnl_pct": -0.492,
+          "pnl_usd": -49.17,
+          "max_dd_pct": 0.99
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -565,16 +565,16 @@
         "with_filter": {
           "trades": 2,
           "win_rate": 50.0,
-          "pnl_pct": -0.131,
-          "pnl_usd": -13.08,
-          "max_dd_pct": 0.33
+          "pnl_pct": -0.155,
+          "pnl_usd": -15.48,
+          "max_dd_pct": 0.34
         },
         "without_filter": {
           "trades": 2,
           "win_rate": 50.0,
-          "pnl_pct": -0.131,
-          "pnl_usd": -13.08,
-          "max_dd_pct": 0.33
+          "pnl_pct": -0.155,
+          "pnl_usd": -15.48,
+          "max_dd_pct": 0.34
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -584,16 +584,16 @@
         "with_filter": {
           "trades": 6,
           "win_rate": 50.0,
-          "pnl_pct": 0.958,
-          "pnl_usd": 95.8,
-          "max_dd_pct": 0.27
+          "pnl_pct": 0.885,
+          "pnl_usd": 88.54,
+          "max_dd_pct": 0.29
         },
         "without_filter": {
           "trades": 6,
           "win_rate": 50.0,
-          "pnl_pct": 0.958,
-          "pnl_usd": 95.8,
-          "max_dd_pct": 0.27
+          "pnl_pct": 0.885,
+          "pnl_usd": 88.54,
+          "max_dd_pct": 0.29
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -603,16 +603,16 @@
         "with_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": 0.157,
-          "pnl_usd": 15.71,
-          "max_dd_pct": 0.92
+          "pnl_pct": 0.073,
+          "pnl_usd": 7.3,
+          "max_dd_pct": 0.98
         },
         "without_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": 0.157,
-          "pnl_usd": 15.71,
-          "max_dd_pct": 0.92
+          "pnl_pct": 0.073,
+          "pnl_usd": 7.3,
+          "max_dd_pct": 0.98
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -622,16 +622,16 @@
         "with_filter": {
           "trades": 4,
           "win_rate": 50.0,
-          "pnl_pct": 0.002,
-          "pnl_usd": 0.17,
-          "max_dd_pct": 0.29
+          "pnl_pct": -0.046,
+          "pnl_usd": -4.63,
+          "max_dd_pct": 0.3
         },
         "without_filter": {
           "trades": 4,
           "win_rate": 50.0,
-          "pnl_pct": 0.002,
-          "pnl_usd": 0.17,
-          "max_dd_pct": 0.29
+          "pnl_pct": -0.046,
+          "pnl_usd": -4.63,
+          "max_dd_pct": 0.3
         },
         "delta_trades": 0,
         "delta_wr": 0.0,
@@ -643,96 +643,96 @@
         "with_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": -0.408,
-          "pnl_usd": -40.81,
-          "max_dd_pct": 0.93
+          "pnl_pct": -0.492,
+          "pnl_usd": -49.17,
+          "max_dd_pct": 0.99
         },
         "without_filter": {
           "trades": 9,
           "win_rate": 33.3,
-          "pnl_pct": -0.495,
-          "pnl_usd": -49.47,
-          "max_dd_pct": 1.02
+          "pnl_pct": -0.602,
+          "pnl_usd": -60.22,
+          "max_dd_pct": 1.1
         },
         "delta_trades": 2,
         "delta_wr": 4.7,
-        "delta_pnl_pct": -0.087
+        "delta_pnl_pct": -0.11
       },
       "ETHUSDT": {
         "with_filter": {
           "trades": 2,
           "win_rate": 50.0,
-          "pnl_pct": -0.131,
-          "pnl_usd": -13.08,
-          "max_dd_pct": 0.33
+          "pnl_pct": -0.155,
+          "pnl_usd": -15.48,
+          "max_dd_pct": 0.34
         },
         "without_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": -0.606,
-          "pnl_usd": -60.56,
-          "max_dd_pct": 1.35
+          "pnl_pct": -0.689,
+          "pnl_usd": -68.91,
+          "max_dd_pct": 1.4
         },
         "delta_trades": 5,
         "delta_wr": -21.4,
-        "delta_pnl_pct": -0.475
+        "delta_pnl_pct": -0.534
       },
       "XRPUSDT": {
         "with_filter": {
           "trades": 6,
           "win_rate": 50.0,
-          "pnl_pct": 0.958,
-          "pnl_usd": 95.8,
-          "max_dd_pct": 0.27
+          "pnl_pct": 0.885,
+          "pnl_usd": 88.54,
+          "max_dd_pct": 0.29
         },
         "without_filter": {
           "trades": 8,
           "win_rate": 37.5,
-          "pnl_pct": 0.589,
-          "pnl_usd": 58.87,
-          "max_dd_pct": 0.63
+          "pnl_pct": 0.492,
+          "pnl_usd": 49.22,
+          "max_dd_pct": 0.68
         },
         "delta_trades": 2,
         "delta_wr": -12.5,
-        "delta_pnl_pct": -0.369
+        "delta_pnl_pct": -0.393
       },
       "DOGEUSDT": {
         "with_filter": {
           "trades": 7,
           "win_rate": 28.6,
-          "pnl_pct": 0.157,
-          "pnl_usd": 15.71,
-          "max_dd_pct": 0.92
+          "pnl_pct": 0.073,
+          "pnl_usd": 7.3,
+          "max_dd_pct": 0.98
         },
         "without_filter": {
           "trades": 10,
           "win_rate": 40.0,
-          "pnl_pct": 0.312,
-          "pnl_usd": 31.22,
-          "max_dd_pct": 0.79
+          "pnl_pct": 0.192,
+          "pnl_usd": 19.19,
+          "max_dd_pct": 0.86
         },
         "delta_trades": 3,
         "delta_wr": 11.4,
-        "delta_pnl_pct": 0.155
+        "delta_pnl_pct": 0.119
       },
       "LINKUSDT": {
         "with_filter": {
           "trades": 4,
           "win_rate": 50.0,
-          "pnl_pct": 0.002,
-          "pnl_usd": 0.17,
-          "max_dd_pct": 0.29
+          "pnl_pct": -0.046,
+          "pnl_usd": -4.63,
+          "max_dd_pct": 0.3
         },
         "without_filter": {
           "trades": 6,
           "win_rate": 33.3,
-          "pnl_pct": -0.801,
-          "pnl_usd": -80.1,
-          "max_dd_pct": 1.06
+          "pnl_pct": -0.872,
+          "pnl_usd": -87.25,
+          "max_dd_pct": 1.1
         },
         "delta_trades": 2,
         "delta_wr": -16.7,
-        "delta_pnl_pct": -0.803
+        "delta_pnl_pct": -0.826
       }
     }
   },
@@ -900,7 +900,7 @@
   },
   "conclusion": {
     "total_base_trades": 26,
-    "total_base_pnl_pct": 0.578,
+    "total_base_pnl_pct": 0.265,
     "filters_status": {
       "adx_threshold": "neutral",
       "adx_growth": "overtight",
@@ -910,12 +910,12 @@
       "btc_1d_ema50": "working"
     },
     "recommendations": [
-      "adx_threshold: NEUTRAL — minimal impact (1 trades, +0.18% PnL).",
-      "adx_growth: OVERTIGHT — removing adds 41 trades with +1.81% PnL. Consider relaxing.",
-      "composite_threshold: OVERTIGHT — removing adds 58 trades with +5.16% PnL. Consider relaxing.",
+      "adx_threshold: NEUTRAL — minimal impact (1 trades, +0.16% PnL).",
+      "adx_growth: OVERTIGHT — removing adds 41 trades with +1.32% PnL. Consider relaxing.",
+      "composite_threshold: OVERTIGHT — removing adds 56 trades with +4.48% PnL. Consider relaxing.",
       "ema_trend: NEUTRAL — minimal impact (0 trades, +0.00% PnL).",
       "rsi_filter: NEUTRAL — minimal impact (0 trades, +0.00% PnL).",
-      "btc_1d_ema50: WORKING — removing hurts PnL by -1.58%. Keep it."
+      "btc_1d_ema50: WORKING — removing hurts PnL by -1.74%. Keep it."
     ]
   }
 }

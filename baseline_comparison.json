@@ -1,0 +1,70 @@
+{
+  "old_baseline": {
+    "total_trades": 26,
+    "total_pnl_pct": 0.578,
+    "by_symbol": {
+      "BTCUSDT": {
+        "trades": 7,
+        "wr": 28.6,
+        "pnl": -0.408
+      },
+      "ETHUSDT": {
+        "trades": 2,
+        "wr": 50.0,
+        "pnl": -0.131
+      },
+      "XRPUSDT": {
+        "trades": 6,
+        "wr": 50.0,
+        "pnl": 0.958
+      },
+      "DOGEUSDT": {
+        "trades": 7,
+        "wr": 28.6,
+        "pnl": 0.157
+      },
+      "LINKUSDT": {
+        "trades": 4,
+        "wr": 50.0,
+        "pnl": 0.002
+      }
+    }
+  },
+  "new_baseline": {
+    "total_trades": 26,
+    "total_pnl_pct": 0.266,
+    "by_symbol": {
+      "BTCUSDT": {
+        "trades": 7,
+        "wr": 28.6,
+        "pnl": -0.492
+      },
+      "ETHUSDT": {
+        "trades": 2,
+        "wr": 50.0,
+        "pnl": -0.155
+      },
+      "XRPUSDT": {
+        "trades": 6,
+        "wr": 50.0,
+        "pnl": 0.885
+      },
+      "DOGEUSDT": {
+        "trades": 7,
+        "wr": 28.6,
+        "pnl": 0.073
+      },
+      "LINKUSDT": {
+        "trades": 4,
+        "wr": 50.0,
+        "pnl": -0.046
+      }
+    }
+  },
+  "fixes_applied": [
+    "look-ahead bias: entry=open[i+1]",
+    "commission: 0.12% round trip"
+  ],
+  "delta_trades": 0,
+  "delta_pnl_pct": -0.312
+}
