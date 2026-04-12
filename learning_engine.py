@@ -9,7 +9,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Set, Tuple
 
 import aiosqlite
 
@@ -31,10 +31,12 @@ DEFAULT_WEIGHTS: Dict[str, float] = {
 }
 
 MIN_TRADES_TOTAL = 50
-MIN_TRADES_PER_SOURCE = 10
+MIN_TRADES_PER_SOURCE = 200
 MAX_DRIFT = 0.30
 DECAY_FACTOR = 0.95
 DECAY_PERIOD_SECS = 7 * 86400  # одна неделя
+TIME_DECAY_THRESHOLD_SECS = 14 * 86400  # 14 дней неактивности
+TIME_DECAY_FACTOR = 0.8  # decay к разнице от дефолта
 
 # ============================================================
 # Модели
@@ -87,8 +89,9 @@ class LearningEngine:
         self._weights: StrategyWeights = StrategyWeights()
         self._stats: LearningStats = LearningStats()
         self._lock = asyncio.Lock()
+        self._disabled_sources: Set[str] = set()
 
-        logger.info(f"LearningEngine init | min_trades={min_trades_total} | max_drift=±{max_drift*100:.0f}% | decay={decay_factor}/week")
+        logger.info(f"LearningEngine init | min_trades={min_trades_total} | min_per_source={min_trades_per_source} | max_drift=+-{max_drift*100:.0f}% | decay={decay_factor}/week")
 
     async def setup(self):
         async with aiosqlite.connect(self.db_path) as db:
@@ -173,16 +176,26 @@ class LearningEngine:
             if self._stats.total_trades < self.min_trades_total:
                 self._stats.weights_locked = True
                 self._stats.lock_reason = f"Нужно {self.min_trades_total} сделок, есть {self._stats.total_trades}"
-                logger.info(f"LearningEngine: веса заблокированы — {self._stats.lock_reason}")
+                logger.info(f"LearningEngine: веса заблокированы -- {self._stats.lock_reason}")
                 self._stats.trades_since_update = 0
                 return
+
+            now = time.time()
+
+            # --- 3.1: Time decay при 14-дневной неактивности ---
+            if now - self._weights.updated_at > TIME_DECAY_THRESHOLD_SECS:
+                decayed_weights = {}
+                for src, w in self._weights.weights.items():
+                    default = DEFAULT_WEIGHTS.get(src, 1.0)
+                    decayed_weights[src] = round(default + (w - default) * TIME_DECAY_FACTOR, 4)
+                self._weights.weights = decayed_weights
+                logger.warning("Weights partially reset due to 14-day inactivity")
 
             # Загружаем только сделки source='live' (это уже обеспечено при записи)
             rows = await self._load_trades()
             if not rows:
                 return
 
-            now = time.time()
             source_pnl: Dict[str, List[float]] = {s: [] for s in DEFAULT_WEIGHTS}
 
             for sources_str, pnl_pct, closed_at in rows:
@@ -196,10 +209,22 @@ class LearningEngine:
                         source_pnl[src].append(weighted_pnl)
 
             new_weights = dict(self._weights.weights)
+
+            # --- 3.2: Disable sources with insufficient trades ---
             for src, pnl_list in source_pnl.items():
                 if len(pnl_list) < self.min_trades_per_source:
-                    logger.debug(f"{src} пропущен — только {len(pnl_list)} сделок (нужно {self.min_trades_per_source})")
+                    # Disable source
+                    new_weights[src] = 0.0
+                    if src not in self._disabled_sources:
+                        self._disabled_sources.add(src)
+                        logger.info(f"LearningEngine: source '{src}' DISABLED ({len(pnl_list)}/{self.min_trades_per_source} trades)")
                     continue
+
+                # Re-enable if was disabled
+                if src in self._disabled_sources:
+                    self._disabled_sources.discard(src)
+                    new_weights[src] = DEFAULT_WEIGHTS.get(src, 1.0)
+                    logger.info(f"LearningEngine: source '{src}' RE-ENABLED ({len(pnl_list)} trades)")
 
                 avg_pnl = sum(pnl_list) / len(pnl_list)
                 delta = avg_pnl * 0.05
@@ -207,7 +232,7 @@ class LearningEngine:
                 raw_weight = old_weight + delta
                 new_weights[src] = self._clamp_weight(src, raw_weight)
 
-                logger.debug(f"{src} {old_weight:.3f} → {new_weights[src]:.3f} (avg_pnl={avg_pnl:+.3f})")
+                logger.debug(f"{src} {old_weight:.3f} -> {new_weights[src]:.3f} (avg_pnl={avg_pnl:+.3f})")
 
             self._weights = StrategyWeights(weights=new_weights, updated_at=now, sample_size=self._stats.total_trades)
             self._stats.weights_locked = False
@@ -215,7 +240,20 @@ class LearningEngine:
             self._stats.last_update_at = now
 
             await self._save_weights()
-            logger.info(f"LearningEngine: веса обновлены (n={self._stats.total_trades})\n{self._weights}")
+            disabled_str = f" | disabled: {self._disabled_sources}" if self._disabled_sources else ""
+            logger.info(f"LearningEngine: weights updated (n={self._stats.total_trades}){disabled_str}\n{self._weights}")
+
+    # --- 3.3: Emergency reset ---
+    def reset_to_defaults(self, reason: str = "emergency"):
+        """Reset all weights to defaults and clear disabled sources."""
+        self._weights = StrategyWeights(weights=dict(DEFAULT_WEIGHTS))
+        self._disabled_sources.clear()
+        logger.warning(f"Weights emergency reset: {reason}")
+
+    @property
+    def disabled_sources(self) -> Set[str]:
+        """Returns set of currently disabled source names."""
+        return self._disabled_sources
 
     def _clamp_weight(self, source: str, weight: float) -> float:
         default = DEFAULT_WEIGHTS.get(source, 1.0)
