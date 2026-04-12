@@ -82,7 +82,7 @@ class BacktestPosition:
         self.remaining_pct = 1.0       # fraction of original size still open
         self.partial_pnl_usd = 0.0     # accumulated PnL from partial closes
 
-    def update(self, current_price, high=None, low=None):
+    def update(self, current_price, high=None, low=None, timestamp=None):
         """
         Update position with candle data.
         1. Check SL hit by intra-candle high/low
@@ -91,6 +91,8 @@ class BacktestPosition:
         """
         if self.is_closed:
             return False, None
+
+        self._current_timestamp = timestamp  # store for _close()
 
         candle_high = high if high is not None else current_price
         candle_low = low if low is not None else current_price
@@ -190,9 +192,9 @@ class BacktestPosition:
         self.partial_pnl_usd += partial_pnl
         self.remaining_pct -= close_fraction
 
-    def _close(self, exit_price, reason):
+    def _close(self, exit_price, reason, timestamp=None):
         self.exit_price = exit_price
-        self.exit_time = datetime.now()
+        self.exit_time = timestamp or getattr(self, '_current_timestamp', None) or datetime.now()
         self.is_closed = True
         self.exit_reason = reason
 
@@ -521,7 +523,7 @@ class Backtester:
             # Update open positions with high/low for accurate SL/TP
             for sym in list(open_positions.keys()):
                 position = open_positions[sym]
-                closed, _ = position.update(current_price, high=candle_high, low=candle_low)
+                closed, _ = position.update(current_price, high=candle_high, low=candle_low, timestamp=timestamp)
 
                 if closed:
                     del open_positions[sym]
@@ -599,7 +601,8 @@ class Backtester:
 
         for sym, position in list(open_positions.items()):
             last_price = df.iloc[-1]['close']
-            position._close(last_price, "END_OF_BACKTEST")
+            last_timestamp = df.index[-1]
+            position._close(last_price, "END_OF_BACKTEST", timestamp=last_timestamp)
             result.add_trade(position)
 
         return result
