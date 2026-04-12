@@ -3,6 +3,7 @@ executor/reconciliation.py
 
 Сверка позиций с биржей при рестарте.
 Восстановление PositionInfo из данных биржи + БД.
+Проверка наличия TP и выставление emergency TP для прибыльных позиций.
 """
 
 import logging
@@ -31,6 +32,7 @@ class ReconciliationManager:
         """
         Восстанавливает позиции с биржи после рестарта.
         Сверяет с данными в памяти и БД.
+        Проверяет наличие TP и выставляет emergency TP при необходимости.
         """
         if self.cfg.dry_run:
             logger.info("Reconciliation skipped (dry-run mode)")
@@ -82,6 +84,9 @@ class ReconciliationManager:
                             f"step={pos.trailing_step} sl={pos.current_sl}"
                         )
 
+                # Проверяем наличие TP и выставляем emergency TP при необходимости
+                await self._check_and_restore_tp(symbol, side, avg_price, size)
+
             # Проверяем: есть ли позиции в памяти, которых нет на бирже
             exchange_symbols = {p.get("symbol", "") for p in exchange_positions}
             for symbol in list(self._positions.keys()):
@@ -99,6 +104,90 @@ class ReconciliationManager:
 
         except Exception as e:
             logger.error(f"Reconciliation error: {e}")
+
+    async def _check_and_restore_tp(self, symbol: str, side, entry_price: float, size: float):
+        """
+        Проверяет наличие TP у позиции.
+        Если TP отсутствует и позиция в плюсе (PnL > 1.5×ATR) → ставит emergency TP на +2.0×ATR.
+        Если TP отсутствует но PnL < 1.5×ATR → только логирует.
+        """
+        from bitget_executor import PositionSide
+
+        try:
+            # Проверяем наличие TP план-ордера
+            has_tp = await self._check_tp_exists(symbol)
+            if has_tp:
+                return  # TP на месте, всё ок
+
+            logger.warning(f"Reconcile: {symbol} — TP отсутствует!")
+
+            # Получаем текущую цену
+            current_price = await self.api.get_last_price(symbol)
+            if not current_price or entry_price <= 0:
+                logger.warning(f"Reconcile: {symbol} — не удалось получить цену для TP check")
+                return
+
+            # Оцениваем ATR как ~1.5% от цены (fallback если нет данных)
+            # В реальности ATR будет из сигнала, но при рестарте его может не быть
+            estimated_atr = entry_price * 0.015  # ~1.5% как proxy для ATR
+
+            # Считаем PnL в единицах ATR
+            if side == PositionSide.LONG:
+                pnl_price = current_price - entry_price
+            else:
+                pnl_price = entry_price - current_price
+
+            pnl_atr = pnl_price / estimated_atr if estimated_atr > 0 else 0
+
+            if pnl_atr >= 1.5:
+                # Позиция в хорошем плюсе → ставим emergency TP на +2.0×ATR
+                if side == PositionSide.LONG:
+                    tp_price = entry_price + estimated_atr * 2.0
+                else:
+                    tp_price = entry_price - estimated_atr * 2.0
+
+                # Определяем сторону закрытия
+                close_side = "sell" if side == PositionSide.LONG else "buy"
+
+                await self.api.place_tp(
+                    symbol=symbol,
+                    side=close_side,
+                    quantity=size,
+                    tp_price=tp_price,
+                )
+                logger.info(
+                    f"🎯 Reconcile: emergency TP placed for {symbol} @ {tp_price:.2f} "
+                    f"(+2.0×ATR, PnL={pnl_atr:.1f}×ATR)"
+                )
+            else:
+                logger.info(
+                    f"Reconcile: {symbol} — TP отсутствует, PnL={pnl_atr:.1f}×ATR < 1.5×ATR, "
+                    f"не ставим emergency TP (ждём сигнал)"
+                )
+
+        except Exception as e:
+            logger.error(f"Reconcile: failed to check/restore TP for {symbol}: {e}")
+
+    async def _check_tp_exists(self, symbol: str) -> bool:
+        """Проверяет, есть ли активный TP план-ордер для символа."""
+        try:
+            from pybitget_client import OrderApi
+            import asyncio
+            api = OrderApi(self.api._client)
+            resp = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: api.ordersPlanPending(
+                    symbol=symbol,
+                    productType=self.cfg.product_type,
+                    planType="pos_profit",
+                )
+            )
+            data = resp.get("data", {})
+            orders = data.get("entrustedList", [])
+            return len(orders) > 0
+        except Exception as e:
+            logger.warning(f"Failed to check TP for {symbol}: {e}")
+            return True  # В случае ошибки — считаем что TP есть (не ставим лишний)
 
     async def get_sl_order(self, symbol: str) -> str:
         """Получает ID активного SL план-ордера."""
