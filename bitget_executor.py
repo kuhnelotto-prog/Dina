@@ -301,7 +301,9 @@ class BitgetExecutor:
                 side=side,
                 size=float(p.get("total", 0) or 0),
                 avg_price=float(p.get("openPriceAvg", 0) or p.get("averageOpenPrice", 0) or 0),
+                unrealized_pnl=float(p.get("unrealisedPnl", 0) or p.get("unrealizedPnl", 0) or 0),
                 leverage=int(p.get("leverage", self.cfg.leverage) or self.cfg.leverage),
+                margin=float(p.get("margin", 0) or p.get("marginSize", 0) or 0),
             ))
         return result
 

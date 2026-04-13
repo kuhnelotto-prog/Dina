@@ -8,6 +8,7 @@ executor/api_client.py
 import asyncio
 import logging
 import uuid
+import time
 from typing import Optional, Any
 
 import requests
@@ -79,21 +80,32 @@ class BitgetAPIClient:
         trade_side = "close" if reduce_only else "open"
         oid = client_oid or f"dina_{uuid.uuid4().hex[:12]}"
 
-        resp = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: api.placeOrder(
-                symbol=symbol,
-                productType=self.cfg.product_type,
-                marginMode=self.cfg.margin_mode,
-                marginCoin=self.cfg.margin_coin,
-                size=str(quantity),
-                side=side,
-                tradeSide=trade_side,
-                orderType="market",
-                clientOid=oid,
-            )
-        )
-        return resp
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                resp = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: api.placeOrder(
+                        symbol=symbol,
+                        productType=self.cfg.product_type,
+                        marginMode=self.cfg.margin_mode,
+                        marginCoin=self.cfg.margin_coin,
+                        size=str(quantity),
+                        side=side,
+                        tradeSide=trade_side,
+                        orderType="market",
+                        clientOid=oid,
+                    )
+                )
+                if resp.get("code") != "00000":
+                    raise RuntimeError(f"Bitget API error: {resp.get('code')} — {resp.get('msg')}")
+                return resp
+            except (ConnectionError, TimeoutError, requests.exceptions.RequestException) as e:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 2 ** attempt
+                logger.warning(f"place_market_order retry {attempt+1}/{max_retries} after {wait}s: {e}")
+                await asyncio.sleep(wait)
 
     async def place_limit_order(
         self, symbol: str, side: str, quantity: float,
@@ -106,22 +118,33 @@ class BitgetAPIClient:
         trade_side = "close" if reduce_only else "open"
         oid = client_oid or f"dina_{uuid.uuid4().hex[:12]}"
 
-        resp = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: api.placeOrder(
-                symbol=symbol,
-                productType=self.cfg.product_type,
-                marginMode=self.cfg.margin_mode,
-                marginCoin=self.cfg.margin_coin,
-                size=str(quantity),
-                price=str(price),
-                side=side,
-                tradeSide=trade_side,
-                orderType="limit",
-                clientOid=oid,
-            )
-        )
-        return resp
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                resp = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: api.placeOrder(
+                        symbol=symbol,
+                        productType=self.cfg.product_type,
+                        marginMode=self.cfg.margin_mode,
+                        marginCoin=self.cfg.margin_coin,
+                        size=str(quantity),
+                        price=str(price),
+                        side=side,
+                        tradeSide=trade_side,
+                        orderType="limit",
+                        clientOid=oid,
+                    )
+                )
+                if resp.get("code") != "00000":
+                    raise RuntimeError(f"Bitget API error: {resp.get('code')} — {resp.get('msg')}")
+                return resp
+            except (ConnectionError, TimeoutError, requests.exceptions.RequestException) as e:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 2 ** attempt
+                logger.warning(f"place_limit_order retry {attempt+1}/{max_retries} after {wait}s: {e}")
+                await asyncio.sleep(wait)
 
     # ============================================================
     # SL / TP plan orders
@@ -152,6 +175,8 @@ class BitgetAPIClient:
                 clientOid=oid,
             )
         )
+        if resp.get("code") != "00000":
+            raise RuntimeError(f"Bitget API error placing SL: {resp.get('code')} — {resp.get('msg')}")
         order_id = resp.get("data", {}).get("orderId", "")
         logger.info(f"SL placed @ {sl_price} | id={order_id}")
         return order_id
@@ -181,6 +206,8 @@ class BitgetAPIClient:
                 clientOid=oid,
             )
         )
+        if resp.get("code") != "00000":
+            raise RuntimeError(f"Bitget API error placing TP: {resp.get('code')} — {resp.get('msg')}")
         order_id = resp.get("data", {}).get("orderId", "")
         logger.info(f"TP placed @ {tp_price} | id={order_id}")
         return order_id
