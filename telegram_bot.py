@@ -18,6 +18,7 @@ import logging
 import os
 import smtplib
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -156,7 +157,7 @@ class DinaBot:
         self._tg_loop = None
 
         # Буфер для ночных сообщений
-        self._night_buffer: List[dict] = []
+        self._night_buffer: deque = deque(maxlen=500)
         self._night_mode = False
 
         # Email fallback для critical-алертов
