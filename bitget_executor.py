@@ -166,6 +166,13 @@ class BitgetExecutor:
         self._reconciliation_mgr = None
         self._guard = None
 
+        # Graceful shutdown
+        self._shutting_down = False
+
+        # Consecutive failures counter for exchange connectivity monitoring
+        self._consecutive_failures = 0
+        self._MAX_CONSECUTIVE_FAILURES = 5
+
         logger.info(f"BitgetExecutor init | symbol={self.cfg.symbol} leverage={self.cfg.leverage}x dry_run={self.cfg.dry_run}")
 
     def set_strategist(self, strategist):
@@ -264,8 +271,56 @@ class BitgetExecutor:
     # Публичные методы — делегируют подмодулям
     # ============================================================
 
+    # ============================================================
+    # Graceful shutdown
+    # ============================================================
+
+    async def shutdown(self):
+        """Корректное завершение: новые ордера не размещаются, текущие завершаются."""
+        logger.info("BitgetExecutor: shutdown initiated...")
+        self._shutting_down = True
+
+        # Останавливаем монитор-луп трейлинга
+        if self._trailing_mgr:
+            self._trailing_mgr.stop()
+
+        # Закрываем thread pool API клиента
+        if self._api_client:
+            self._api_client.close()
+
+        logger.info("BitgetExecutor: shutdown complete ✅")
+
+    # ============================================================
+    # Exchange connectivity tracking
+    # ============================================================
+
+    def _record_api_success(self):
+        """Сбрасывает счётчик сбоев при успешном API вызове."""
+        if self._consecutive_failures > 0:
+            logger.info(f"Exchange connectivity restored (was {self._consecutive_failures} consecutive failures)")
+        self._consecutive_failures = 0
+
+    def _record_api_failure(self):
+        """Увеличивает счётчик сбоев, уведомляет при потере связи."""
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self._MAX_CONSECUTIVE_FAILURES:
+            logger.critical("Exchange connectivity lost — %d consecutive failures", self._consecutive_failures)
+            # Отправляем Telegram уведомление если бот доступен
+            if self._strategist and hasattr(self._strategist, '_bot') and self._strategist._bot:
+                try:
+                    asyncio.create_task(
+                        self._strategist._bot.alert_error(
+                            f"Exchange connectivity lost — {self._consecutive_failures} consecutive API failures"
+                        )
+                    )
+                except Exception:
+                    pass
+
     async def open_position(self, req: OrderRequest) -> OrderResult:
         """Открывает позицию: entry + SL + TP."""
+        if self._shutting_down:
+            logger.warning("BitgetExecutor: order rejected — shutting down")
+            return OrderResult(success=False, error="Executor is shutting down")
         # Guard check
         if not self._guard.check(req):
             return OrderResult(success=False, error="Blocked by ExecutionGuard")
@@ -290,7 +345,12 @@ class BitgetExecutor:
 
     async def get_positions_from_exchange(self) -> List[PositionInfo]:
         """Получает позиции с биржи."""
-        raw = await self._api_client.get_positions_from_exchange()
+        try:
+            raw = await self._api_client.get_positions_from_exchange()
+            self._record_api_success()
+        except Exception as e:
+            self._record_api_failure()
+            raise
         result = []
         for p in raw:
             symbol = p.get("symbol", "")
@@ -330,7 +390,13 @@ class BitgetExecutor:
         """Получает баланс аккаунта."""
         if self.cfg.dry_run:
             return float(os.getenv("STARTING_BALANCE", 10000))
-        return await self._api_client.get_balance()
+        try:
+            result = await self._api_client.get_balance()
+            self._record_api_success()
+            return result
+        except Exception as e:
+            self._record_api_failure()
+            raise
 
     async def get_funding_rate(self, symbol: str) -> float:
         """Получает текущий funding rate."""
@@ -372,7 +438,16 @@ class BitgetExecutor:
     # ============================================================
 
     async def _get_last_price(self, symbol: str) -> Optional[float]:
-        return await self._api_client.get_last_price(symbol)
+        try:
+            result = await self._api_client.get_last_price(symbol)
+            if result is not None:
+                self._record_api_success()
+            else:
+                self._record_api_failure()
+            return result
+        except Exception as e:
+            self._record_api_failure()
+            raise
 
     async def _get_atr(self, symbol: str) -> Optional[float]:
         return None  # заглушка

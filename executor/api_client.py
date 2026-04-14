@@ -9,6 +9,7 @@ import asyncio
 import logging
 import uuid
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Any
 
 import requests
@@ -34,11 +35,17 @@ class BitgetAPIClient:
         """
         self._client = client
         self.cfg = cfg
+        self._executor = ThreadPoolExecutor(max_workers=4)
         # Маскированный лог конфига (без секретов)
         logger.info(f"BitgetAPIClient init | symbol={cfg.symbol} "
                      f"api_key={self._mask(cfg.api_key)} "
                      f"passphrase={self._mask(cfg.passphrase)} "
                      f"dry_run={cfg.dry_run}")
+
+    def close(self):
+        """Корректно завершает thread pool."""
+        logger.info("BitgetAPIClient: shutting down thread pool...")
+        self._executor.shutdown(wait=True)
 
     # ============================================================
     # Leverage
@@ -53,7 +60,7 @@ class BitgetAPIClient:
             api = PositionApi(self._client)
 
             await asyncio.get_event_loop().run_in_executor(
-                None,
+                self._executor,
                 lambda: api.setMarginMode(
                     symbol=self.cfg.symbol,
                     productType=self.cfg.product_type,
@@ -64,7 +71,7 @@ class BitgetAPIClient:
 
             for hold_side in ("long", "short"):
                 await asyncio.get_event_loop().run_in_executor(
-                    None,
+                    self._executor,
                     lambda hs=hold_side: api.setLeverage(
                         symbol=self.cfg.symbol,
                         productType=self.cfg.product_type,
@@ -97,7 +104,7 @@ class BitgetAPIClient:
         for attempt in range(max_retries):
             try:
                 resp = await asyncio.get_event_loop().run_in_executor(
-                    None,
+                    self._executor,
                     lambda: api.placeOrder(
                         symbol=symbol,
                         productType=self.cfg.product_type,
@@ -149,7 +156,7 @@ class BitgetAPIClient:
         for attempt in range(max_retries):
             try:
                 resp = await asyncio.get_event_loop().run_in_executor(
-                    None,
+                    self._executor,
                     lambda: api.placeOrder(
                         symbol=symbol,
                         productType=self.cfg.product_type,
@@ -201,7 +208,7 @@ class BitgetAPIClient:
         for attempt in range(max_retries):
             try:
                 resp = await asyncio.get_event_loop().run_in_executor(
-                    None,
+                    self._executor,
                     lambda: api.placePlanOrder(
                         symbol=symbol,
                         productType=self.cfg.product_type,
@@ -248,7 +255,7 @@ class BitgetAPIClient:
         for attempt in range(max_retries):
             try:
                 resp = await asyncio.get_event_loop().run_in_executor(
-                    None,
+                    self._executor,
                     lambda: api.placePlanOrder(
                         symbol=symbol,
                         productType=self.cfg.product_type,
@@ -289,7 +296,7 @@ class BitgetAPIClient:
             from pybitget_client import OrderApi
             api = OrderApi(self._client)
             await asyncio.get_event_loop().run_in_executor(
-                None,
+                self._executor,
                 lambda: api.cancelAllPlanOrders(
                     symbol=symbol,
                     productType=self.cfg.product_type,
@@ -306,7 +313,7 @@ class BitgetAPIClient:
             from pybitget_client import OrderApi
             api = OrderApi(self._client)
             resp = await asyncio.get_event_loop().run_in_executor(
-                None,
+                self._executor,
                 lambda: api.ordersPlanPending(
                     symbol=symbol,
                     productType=self.cfg.product_type,
@@ -319,7 +326,7 @@ class BitgetAPIClient:
                 order_id = order.get("orderId")
                 if order_id:
                     await asyncio.get_event_loop().run_in_executor(
-                        None,
+                        self._executor,
                         lambda oid=order_id: api.cancelPlanOrder(
                             symbol=symbol,
                             productType=self.cfg.product_type,
@@ -342,7 +349,7 @@ class BitgetAPIClient:
             trigger_side = "sell" if side.lower() == "long" else "buy"
 
             resp = await asyncio.get_event_loop().run_in_executor(
-                None,
+                self._executor,
                 lambda: api.placePlanOrder(
                     symbol=symbol,
                     productType=self.cfg.product_type,
@@ -372,7 +379,7 @@ class BitgetAPIClient:
         from pybitget_client import AccountApi
         api = AccountApi(self._client)
         resp = await asyncio.get_event_loop().run_in_executor(
-            None,
+            self._executor,
             lambda: api.accounts(productType=self.cfg.product_type)
         )
         data = resp.get("data", [])
@@ -387,7 +394,7 @@ class BitgetAPIClient:
             try:
                 url = f"https://api.bitget.com/api/v2/mix/market/current-fund-rate?symbol={symbol}&productType=USDT-FUTURES"
                 resp = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: requests.get(url, timeout=5)
+                    self._executor, lambda: requests.get(url, timeout=5)
                 )
                 if resp.status_code == 429:
                     retry_after = int(resp.headers.get("Retry-After", 5))
@@ -432,7 +439,7 @@ class BitgetAPIClient:
             from pybitget_client import PositionApi
             api = PositionApi(self._client)
             resp = await asyncio.get_event_loop().run_in_executor(
-                None,
+                self._executor,
                 lambda: api.allPosition(
                     productType=self.cfg.product_type,
                     marginCoin=self.cfg.margin_coin,
@@ -461,7 +468,7 @@ class BitgetAPIClient:
         while time.time() < deadline:
             try:
                 resp = await asyncio.get_event_loop().run_in_executor(
-                    None,
+                    self._executor,
                     lambda: api.detail(
                         symbol=symbol,
                         productType=self.cfg.product_type,
@@ -489,7 +496,7 @@ class BitgetAPIClient:
             from pybitget_client import OrderApi
             api = OrderApi(self._client)
             resp = await asyncio.get_event_loop().run_in_executor(
-                None,
+                self._executor,
                 lambda: api.ordersPlanPending(
                     symbol=symbol,
                     productType=self.cfg.product_type,

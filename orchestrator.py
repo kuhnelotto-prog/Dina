@@ -326,6 +326,10 @@ class Orchestrator:
         if self.data_feed:
             await self.data_feed.stop()
 
+        # Graceful shutdown executor (closes thread pool, rejects new orders)
+        if self.executor:
+            await self.executor.shutdown()
+
         for task in self._tasks:
             if not task.done():
                 task.cancel()
