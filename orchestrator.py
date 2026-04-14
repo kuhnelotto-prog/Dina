@@ -15,9 +15,6 @@ import logging
 import os
 from typing import Dict
 
-from dotenv import load_dotenv
-load_dotenv()
-
 from event_bus import EventBus
 from performance_attribution import PerformanceAttribution
 from position_sizer import PortfolioState, SizerConfig
