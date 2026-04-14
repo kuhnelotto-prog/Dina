@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 class BitgetAPIClient:
     """Обёртка над pybitget_client для async-вызовов к Bitget API."""
 
+    @staticmethod
+    def _mask(key: str) -> str:
+        """Маскирует чувствительный ключ, показывая только последние 4 символа."""
+        if not key or len(key) <= 4:
+            return "****"
+        return "****" + key[-4:]
+
     def __init__(self, client: Any, cfg: Any):
         """
         Args:
@@ -27,6 +34,11 @@ class BitgetAPIClient:
         """
         self._client = client
         self.cfg = cfg
+        # Маскированный лог конфига (без секретов)
+        logger.info(f"BitgetAPIClient init | symbol={cfg.symbol} "
+                     f"api_key={self._mask(cfg.api_key)} "
+                     f"passphrase={self._mask(cfg.passphrase)} "
+                     f"dry_run={cfg.dry_run}")
 
     # ============================================================
     # Leverage
@@ -106,6 +118,14 @@ class BitgetAPIClient:
                 wait = 2 ** attempt
                 logger.warning(f"place_market_order retry {attempt+1}/{max_retries} after {wait}s: {e}")
                 await asyncio.sleep(wait)
+            except RuntimeError as e:
+                # Check for 429 rate limit in API response code
+                if "429" in str(e) or "rate" in str(e).lower():
+                    retry_after = 5
+                    logger.warning(f"Rate limit hit in place_market_order, waiting {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                raise
 
     async def place_limit_order(
         self, symbol: str, side: str, quantity: float,
@@ -145,6 +165,13 @@ class BitgetAPIClient:
                 wait = 2 ** attempt
                 logger.warning(f"place_limit_order retry {attempt+1}/{max_retries} after {wait}s: {e}")
                 await asyncio.sleep(wait)
+            except RuntimeError as e:
+                if "429" in str(e) or "rate" in str(e).lower():
+                    retry_after = 5
+                    logger.warning(f"Rate limit hit in place_limit_order, waiting {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                raise
 
     # ============================================================
     # SL / TP plan orders
@@ -158,28 +185,44 @@ class BitgetAPIClient:
 
         oid = client_oid or f"sl_{uuid.uuid4().hex[:8]}"
 
-        resp = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: api.placePlanOrder(
-                symbol=symbol,
-                productType=self.cfg.product_type,
-                marginMode=self.cfg.margin_mode,
-                marginCoin=self.cfg.margin_coin,
-                size=str(quantity),
-                triggerPrice=str(sl_price),
-                side=side,
-                tradeSide="close",
-                triggerType="mark_price",
-                orderType="market",
-                planType="loss_plan",
-                clientOid=oid,
-            )
-        )
-        if resp.get("code") != "00000":
-            raise RuntimeError(f"Bitget API error placing SL: {resp.get('code')} — {resp.get('msg')}")
-        order_id = resp.get("data", {}).get("orderId", "")
-        logger.info(f"SL placed @ {sl_price} | id={order_id}")
-        return order_id
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                resp = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: api.placePlanOrder(
+                        symbol=symbol,
+                        productType=self.cfg.product_type,
+                        marginMode=self.cfg.margin_mode,
+                        marginCoin=self.cfg.margin_coin,
+                        size=str(quantity),
+                        triggerPrice=str(sl_price),
+                        side=side,
+                        tradeSide="close",
+                        triggerType="mark_price",
+                        orderType="market",
+                        planType="loss_plan",
+                        clientOid=oid,
+                    )
+                )
+                if resp.get("code") != "00000":
+                    raise RuntimeError(f"Bitget API error placing SL: {resp.get('code')} — {resp.get('msg')}")
+                order_id = resp.get("data", {}).get("orderId", "")
+                logger.info(f"SL placed @ {sl_price} | id={order_id}")
+                return order_id
+            except (ConnectionError, TimeoutError, requests.exceptions.RequestException) as e:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 2 ** attempt
+                logger.warning(f"place_sl retry {attempt+1}/{max_retries} after {wait}s: {e}")
+                await asyncio.sleep(wait)
+            except RuntimeError as e:
+                if "429" in str(e) or "rate" in str(e).lower():
+                    retry_after = 5
+                    logger.warning(f"Rate limit hit in place_sl, waiting {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                raise
 
     async def place_tp(self, symbol: str, side: str, quantity: float,
                        tp_price: float, client_oid: str = "") -> str:
@@ -189,28 +232,44 @@ class BitgetAPIClient:
 
         oid = client_oid or f"tp_{uuid.uuid4().hex[:8]}"
 
-        resp = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: api.placePlanOrder(
-                symbol=symbol,
-                productType=self.cfg.product_type,
-                marginMode=self.cfg.margin_mode,
-                marginCoin=self.cfg.margin_coin,
-                size=str(quantity),
-                triggerPrice=str(tp_price),
-                side=side,
-                tradeSide="close",
-                triggerType="mark_price",
-                orderType="market",
-                planType="profit_plan",
-                clientOid=oid,
-            )
-        )
-        if resp.get("code") != "00000":
-            raise RuntimeError(f"Bitget API error placing TP: {resp.get('code')} — {resp.get('msg')}")
-        order_id = resp.get("data", {}).get("orderId", "")
-        logger.info(f"TP placed @ {tp_price} | id={order_id}")
-        return order_id
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                resp = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: api.placePlanOrder(
+                        symbol=symbol,
+                        productType=self.cfg.product_type,
+                        marginMode=self.cfg.margin_mode,
+                        marginCoin=self.cfg.margin_coin,
+                        size=str(quantity),
+                        triggerPrice=str(tp_price),
+                        side=side,
+                        tradeSide="close",
+                        triggerType="mark_price",
+                        orderType="market",
+                        planType="profit_plan",
+                        clientOid=oid,
+                    )
+                )
+                if resp.get("code") != "00000":
+                    raise RuntimeError(f"Bitget API error placing TP: {resp.get('code')} — {resp.get('msg')}")
+                order_id = resp.get("data", {}).get("orderId", "")
+                logger.info(f"TP placed @ {tp_price} | id={order_id}")
+                return order_id
+            except (ConnectionError, TimeoutError, requests.exceptions.RequestException) as e:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 2 ** attempt
+                logger.warning(f"place_tp retry {attempt+1}/{max_retries} after {wait}s: {e}")
+                await asyncio.sleep(wait)
+            except RuntimeError as e:
+                if "429" in str(e) or "rate" in str(e).lower():
+                    retry_after = 5
+                    logger.warning(f"Rate limit hit in place_tp, waiting {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                raise
 
     async def cancel_plan_orders(self, symbol: str):
         """Отменяет все план-ордера для символа."""
@@ -311,30 +370,47 @@ class BitgetAPIClient:
 
     async def get_funding_rate(self, symbol: str) -> float:
         """Получает текущий funding rate."""
-        try:
-            url = f"https://api.bitget.com/api/v2/mix/market/current-fund-rate?symbol={symbol}&productType=USDT-FUTURES"
-            resp = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: requests.get(url, timeout=5)
-            )
-            data = resp.json()
-            if data.get("code") == "00000" and data.get("data"):
-                return float(data["data"][0].get("fundingRate", 0))
-        except Exception as e:
-            logger.error(f"Failed to get funding rate: {e}")
+        max_429_retries = 2
+        for attempt in range(max_429_retries + 1):
+            try:
+                url = f"https://api.bitget.com/api/v2/mix/market/current-fund-rate?symbol={symbol}&productType=USDT-FUTURES"
+                resp = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: requests.get(url, timeout=5)
+                )
+                if resp.status_code == 429:
+                    retry_after = int(resp.headers.get("Retry-After", 5))
+                    logger.warning(f"Rate limit hit getting funding rate, waiting {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                data = resp.json()
+                if data.get("code") == "00000" and data.get("data"):
+                    return float(data["data"][0].get("fundingRate", 0))
+                return 0.0
+            except Exception as e:
+                logger.error(f"Failed to get funding rate: {e}")
+                return 0.0
         return 0.0
 
     async def get_last_price(self, symbol: str) -> Optional[float]:
         """Получает последнюю цену."""
-        try:
-            url = f"https://api.bitget.com/api/v2/mix/market/ticker?symbol={symbol}&productType=USDT-FUTURES"
-            resp = requests.get(url, timeout=5)
-            data = resp.json()
-            if data.get("code") == "00000" and data.get("data"):
-                return float(data["data"][0]["lastPr"])
-            return None
-        except Exception as e:
-            logger.error(f"Failed to get price for {symbol}: {e}")
-            return None
+        max_429_retries = 2
+        for attempt in range(max_429_retries + 1):
+            try:
+                url = f"https://api.bitget.com/api/v2/mix/market/ticker?symbol={symbol}&productType=USDT-FUTURES"
+                resp = requests.get(url, timeout=5)
+                if resp.status_code == 429:
+                    retry_after = int(resp.headers.get("Retry-After", 5))
+                    logger.warning(f"Rate limit hit getting price, waiting {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                data = resp.json()
+                if data.get("code") == "00000" and data.get("data"):
+                    return float(data["data"][0]["lastPr"])
+                return None
+            except Exception as e:
+                logger.error(f"Failed to get price for {symbol}: {e}")
+                return None
+        return None
 
     async def get_positions_from_exchange(self) -> list:
         """Получает все открытые позиции с биржи."""
