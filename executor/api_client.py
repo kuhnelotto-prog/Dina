@@ -90,7 +90,8 @@ class BitgetAPIClient:
         api = OrderApi(self._client)
 
         trade_side = "close" if reduce_only else "open"
-        oid = client_oid or f"dina_{uuid.uuid4().hex[:12]}"
+        # Generate clientOid once — protects against duplicate orders on retry
+        oid = client_oid or f"dina_{int(time.time() * 1000)}"
 
         max_retries = 3
         for attempt in range(max_retries):
@@ -109,8 +110,13 @@ class BitgetAPIClient:
                         clientOid=oid,
                     )
                 )
-                if resp.get("code") != "00000":
-                    raise RuntimeError(f"Bitget API error: {resp.get('code')} — {resp.get('msg')}")
+                code = resp.get("code")
+                if code != "00000":
+                    # Duplicate clientOid — order already went through, treat as success
+                    if code in ("40014", "45110"):
+                        logger.warning(f"Duplicate order detected (clientOid={oid}), treating as success")
+                        return resp
+                    raise RuntimeError(f"Bitget API error: code={code}, msg={resp.get('msg')}")
                 return resp
             except (ConnectionError, TimeoutError, requests.exceptions.RequestException) as e:
                 if attempt == max_retries - 1:
@@ -136,7 +142,8 @@ class BitgetAPIClient:
         api = OrderApi(self._client)
 
         trade_side = "close" if reduce_only else "open"
-        oid = client_oid or f"dina_{uuid.uuid4().hex[:12]}"
+        # Generate clientOid once — protects against duplicate orders on retry
+        oid = client_oid or f"dina_{int(time.time() * 1000)}"
 
         max_retries = 3
         for attempt in range(max_retries):
@@ -156,8 +163,13 @@ class BitgetAPIClient:
                         clientOid=oid,
                     )
                 )
-                if resp.get("code") != "00000":
-                    raise RuntimeError(f"Bitget API error: {resp.get('code')} — {resp.get('msg')}")
+                code = resp.get("code")
+                if code != "00000":
+                    # Duplicate clientOid — order already went through, treat as success
+                    if code in ("40014", "45110"):
+                        logger.warning(f"Duplicate order detected (clientOid={oid}), treating as success")
+                        return resp
+                    raise RuntimeError(f"Bitget API error: code={code}, msg={resp.get('msg')}")
                 return resp
             except (ConnectionError, TimeoutError, requests.exceptions.RequestException) as e:
                 if attempt == max_retries - 1:
