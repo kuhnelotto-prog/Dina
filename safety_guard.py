@@ -12,7 +12,6 @@ safety_guard.py — Независимый asyncio-watchdog для Дины.
 
 import asyncio
 import logging
-import os
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -21,13 +20,24 @@ logger = logging.getLogger("SafetyGuard")
 
 @dataclass
 class SafetyGuardConfig:
-    max_fast_drawdown_pct: float = float(os.getenv("MAX_FAST_DRAWDOWN_PCT", 3.0))
-    max_position_age_hours: float = float(os.getenv("MAX_POSITION_AGE_HOURS", 48.0))
-    heartbeat_timeout_sec: int = int(os.getenv("HEARTBEAT_TIMEOUT_SEC", 60))
+    max_fast_drawdown_pct: float = 0.15
+    max_position_age_hours: float = 48.0
+    heartbeat_timeout_sec: int = 300
     emergency_sl_atr_multiplier: float = 1.5
     check_interval_sec: int = 30
-    dry_run: bool = os.getenv("SAFETY_GUARD_DRY_RUN", "false").lower() == "true"
+    dry_run: bool = False
     alert_cooldown_sec: int = 300
+
+    @classmethod
+    def from_settings(cls):
+        """Создаёт конфиг из единого settings."""
+        from config import settings
+        return cls(
+            max_fast_drawdown_pct=settings.safety.max_fast_drawdown_pct,
+            max_position_age_hours=settings.safety.max_position_age_hours,
+            heartbeat_timeout_sec=settings.safety.heartbeat_timeout_sec,
+            dry_run=settings.safety.dry_run,
+        )
 
 class SafetyGuard:
     def __init__(self, executor, telegram=None,

@@ -12,15 +12,15 @@ orchestrator.py — Координатор Дины.
 
 import asyncio
 import logging
-import os
 from typing import Dict
 
+from config import settings
 from event_bus import EventBus
 from performance_attribution import PerformanceAttribution
 from position_sizer import PortfolioState, SizerConfig
 from risk_manager import RiskManager
 from bitget_executor import BitgetExecutor, ExecutorConfig
-from telegram_bot import DinaBot, TelegramConfig
+from telegram_bot import DinaBot, TelegramBotConfig
 from learning_engine import LearningEngine
 from signal_builder import SignalBuilder
 from strategist_client import StrategistClient
@@ -84,9 +84,9 @@ class Orchestrator:
     async def _setup(self) -> None:
         logger.info("Оркестратор: инициализация компонентов...")
 
-        symbols = os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT,XRPUSDT,LINKUSDT,SOLUSDT").split(",")
-        timeframes = os.getenv("TIMEFRAMES", "15m,1h,4h,1d").split(",")
-        starting_balance = float(os.getenv("STARTING_BALANCE", 10000))
+        symbols = settings.trading.symbols
+        timeframes = settings.trading.timeframes
+        starting_balance = settings.trading.starting_balance
 
         # EventBus
         self.bus = EventBus()
@@ -96,10 +96,7 @@ class Orchestrator:
         await attribution.setup()
 
         # BitgetExecutor
-        self.executor = BitgetExecutor(ExecutorConfig(
-            symbol=symbols[0],
-            leverage=int(os.getenv("LEVERAGE", 3)),
-        ))
+        self.executor = BitgetExecutor(ExecutorConfig.from_settings())
         await self.executor.setup()
 
         # Баланс с биржи
@@ -109,7 +106,7 @@ class Orchestrator:
                 raise ValueError("нулевой баланс")
         except Exception as e:
             logger.warning(f"Не удалось получить баланс с биржи: {e} — используем .env")
-            starting_balance = float(os.getenv("STARTING_BALANCE", 10000))
+            starting_balance = settings.trading.starting_balance
 
         # Portfolio
         self.portfolio = PortfolioState(
@@ -121,13 +118,13 @@ class Orchestrator:
         # RiskManager
         self.risk_manager = RiskManager(
             sizer_config=SizerConfig(
-                base_risk_pct=float(os.getenv("BASE_RISK_PCT", 1.0)),
-                max_risk_pct=float(os.getenv("MAX_RISK_PCT", 2.0)),
-                leverage=int(os.getenv("LEVERAGE", 3)),
+                base_risk_pct=settings.risk.base_risk_pct,
+                max_risk_pct=settings.risk.max_risk_pct,
+                leverage=settings.trading.leverage,
             ),
-            max_open_positions=int(os.getenv("MAX_POSITIONS", 2)),
-            daily_loss_limit=float(os.getenv("DAILY_LOSS_LIMIT", 5.0)),
-            max_total_exposure_usd=float(os.getenv("MAX_TOTAL_EXPOSURE", 5000.0)),
+            max_open_positions=settings.risk.max_positions,
+            daily_loss_limit=settings.risk.daily_loss_limit,
+            max_total_exposure_usd=settings.risk.max_total_exposure_usd,
         )
 
         # Восстановление позиций с биржи
@@ -156,7 +153,7 @@ class Orchestrator:
 
         # Telegram
         self.bot = DinaBot(
-            config=TelegramConfig(),
+            config=TelegramBotConfig.from_settings(),
             main_loop=asyncio.get_running_loop(),
             risk_manager=self.risk_manager,
             portfolio=self.portfolio,
@@ -220,12 +217,7 @@ class Orchestrator:
         )
 
         # SafetyGuard
-        sg_config = SafetyGuardConfig(
-            max_fast_drawdown_pct=float(os.getenv("MAX_FAST_DRAWDOWN_PCT", 3.0)),
-            max_position_age_hours=float(os.getenv("MAX_POSITION_AGE_HOURS", 48.0)),
-            heartbeat_timeout_sec=int(os.getenv("HEARTBEAT_TIMEOUT_SEC", 60)),
-            dry_run=os.getenv("SAFETY_GUARD_DRY_RUN", "true").lower() == "true",
-        )
+        sg_config = SafetyGuardConfig.from_settings()
         self.safety_guard = create_safety_guard(
             executor=self.executor,
             telegram=self.bot,

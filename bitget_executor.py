@@ -13,7 +13,6 @@ bitget_executor.py — Фасад для исполнения ордеров н�
 
 import asyncio
 import logging
-import os
 import time
 import uuid
 from collections import deque
@@ -32,9 +31,9 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ExecutorConfig:
-    api_key: str = field(default_factory=lambda: os.getenv("BITGET_API_KEY", ""))
-    api_secret: str = field(default_factory=lambda: os.getenv("BITGET_API_SECRET", ""))
-    passphrase: str = field(default_factory=lambda: os.getenv("BITGET_PASSPHRASE", ""))
+    api_key: str = ""
+    api_secret: str = ""
+    passphrase: str = ""
     symbol: str = "BTCUSDT"
     margin_coin: str = "USDT"
     leverage: int = 10
@@ -42,13 +41,29 @@ class ExecutorConfig:
     product_type: str = "USDT-FUTURES"
     max_retries: int = 3
     retry_delay_s: float = 1.0
-    db_path: str = field(default_factory=lambda: os.getenv("DB_PATH", "dina.db"))
-    dry_run: bool = field(default_factory=lambda: os.getenv("DRY_RUN", "true").lower() == "true")
+    db_path: str = "dina.db"
+    dry_run: bool = True
 
     # ExecutionGuard
-    allowlist_symbols: List[str] = field(default_factory=lambda: os.getenv("SYMBOLS", "BTCUSDT").split(","))
+    allowlist_symbols: List[str] = field(default_factory=lambda: ["BTCUSDT"])
     max_position_pct: float = 0.15
     max_orders_per_minute: int = 5
+
+    @classmethod
+    def from_settings(cls, **overrides):
+        """Создаёт конфиг из единого settings."""
+        from config import settings
+        return cls(
+            api_key=settings.bitget.api_key,
+            api_secret=settings.bitget.api_secret,
+            passphrase=settings.bitget.passphrase,
+            symbol=settings.trading.symbols[0] if settings.trading.symbols else "BTCUSDT",
+            leverage=settings.trading.leverage,
+            db_path=settings.trading.db_path,
+            dry_run=settings.trading.dry_run,
+            allowlist_symbols=settings.trading.symbols,
+            **overrides,
+        )
 
     # Trailing
     trailing_activation_atr: float = 0.5
@@ -389,7 +404,8 @@ class BitgetExecutor:
     async def get_balance(self) -> float:
         """Получает баланс аккаунта."""
         if self.cfg.dry_run:
-            return float(os.getenv("STARTING_BALANCE", 10000))
+            from config import settings
+            return settings.trading.starting_balance
         try:
             result = await self._api_client.get_balance()
             self._record_api_success()

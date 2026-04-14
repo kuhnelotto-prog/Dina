@@ -106,14 +106,26 @@ class EmailNotifier:
 # ============================================================
 
 @dataclass
-class TelegramConfig:
-    token: str = field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
-    allowed_ids: set = field(default_factory=lambda: {int(x) for x in os.getenv("TELEGRAM_ALLOWED_IDS", "").split(",") if x})
-    db_path: str = field(default_factory=lambda: os.getenv("DB_PATH", "dina.db"))
+class TelegramBotConfig:
+    token: str = ""
+    allowed_ids: set = field(default_factory=set)
+    db_path: str = "dina.db"
 
     # Ночной режим (UTC)
     silent_start_hour: int = 23
     silent_end_hour: int = 7
+
+    @classmethod
+    def from_settings(cls):
+        """Создаёт конфиг из единого settings."""
+        from config import settings
+        return cls(
+            token=settings.telegram.bot_token,
+            allowed_ids=set(settings.telegram.allowed_ids),
+            db_path=settings.trading.db_path,
+            silent_start_hour=settings.telegram.silent_start_hour,
+            silent_end_hour=settings.telegram.silent_end_hour,
+        )
 
 
 # ============================================================
@@ -133,7 +145,7 @@ class BotState(str, Enum):
 class DinaBot:
     def __init__(
         self,
-        config: Optional[TelegramConfig] = None,
+        config: Optional[TelegramBotConfig] = None,
         strategist=None,
         risk_manager=None,
         portfolio=None,
@@ -142,7 +154,7 @@ class DinaBot:
         symbols=None,
         main_loop: Optional[asyncio.AbstractEventLoop] = None,
     ):
-        self.cfg = config or TelegramConfig()
+        self.cfg = config or TelegramBotConfig.from_settings()
         self.strategist = strategist
         self.risk_manager = risk_manager
         self.portfolio = portfolio
