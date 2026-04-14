@@ -416,7 +416,9 @@ class BitgetAPIClient:
         for attempt in range(max_429_retries + 1):
             try:
                 url = f"https://api.bitget.com/api/v2/mix/market/ticker?symbol={symbol}&productType=USDT-FUTURES"
-                resp = requests.get(url, timeout=5)
+                resp = await asyncio.get_event_loop().run_in_executor(
+                    self._executor, lambda: requests.get(url, timeout=5)
+                )
                 if resp.status_code == 429:
                     retry_after = int(resp.headers.get("Retry-After", 5))
                     logger.warning(f"Rate limit hit getting price, waiting {retry_after}s...")
@@ -460,7 +462,6 @@ class BitgetAPIClient:
         Ожидает исполнения ордера.
         Returns: (filled_price, commission) — tuple(float|None, float)
         """
-        import time
         from pybitget_client import OrderApi
         deadline = time.time() + timeout
         api = OrderApi(self._client)
