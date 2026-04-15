@@ -102,6 +102,7 @@ class BacktestPosition:
         self.remaining_pct = 1.0       # fraction of original size still open
         self.partial_pnl_usd = 0.0     # accumulated PnL from partial closes
         self.total_funding = 0.0      # accumulated funding cost
+        self._funding_hours_accrued = 0  # сколько 8-часовых funding-интервалов уже начислено
 
     def update(self, current_price, high=None, low=None, timestamp=None):
         """
@@ -596,12 +597,20 @@ class Backtester:
                     pass
 
             # ── Funding rate: accrue for each open position ──
-            # Funding is charged every 8 hours (3×/day), NOT every 4H candle
-            # Only accrue when candle aligns with funding interval (00:00, 08:00, 16:00 UTC)
-            if hasattr(timestamp, 'hour') and timestamp.hour % FUNDING_INTERVAL_H == 0:
-                for sym in open_positions:
-                    pos = open_positions[sym]
-                    pos.total_funding += pos.size_usd * FUNDING_RATE
+            # Funding is charged every 8 hours (3×/day).
+            # Используем elapsed hours с момента входа — надёжно для любого таймфрейма свечей.
+            for sym in open_positions:
+                pos = open_positions[sym]
+                try:
+                    elapsed_h = (timestamp - pos.entry_time).total_seconds() / 3600
+                except Exception:
+                    elapsed_h = 0
+                # Сколько 8-часовых интервалов пройдено с момента входа
+                intervals_elapsed = int(elapsed_h / FUNDING_INTERVAL_H)
+                new_intervals = intervals_elapsed - pos._funding_hours_accrued
+                if new_intervals > 0:
+                    pos.total_funding += pos.size_usd * FUNDING_RATE * new_intervals
+                    pos._funding_hours_accrued = intervals_elapsed
 
             # ── Execute pending signals at this candle's open ──
             for sym in list(pending_signals.keys()):
