@@ -3,7 +3,7 @@
 Диагностика: почему SignalBuilder._calculate_composite() не достигает ±0.30.
 Разбираем STATE и EVENT слои по отдельности.
 """
-import os, sys, warnings, logging
+import sys, warnings, logging
 from datetime import datetime, timezone, timedelta
 import pandas as pd
 import numpy as np
@@ -11,9 +11,7 @@ import numpy as np
 warnings.filterwarnings("ignore")
 logging.disable(logging.CRITICAL)
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dotenv import load_dotenv
-load_dotenv()
+sys.path.insert(0, ".")
 
 from signal_builder import SignalBuilder
 from indicators_calc import IndicatorsCalculator

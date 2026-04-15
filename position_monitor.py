@@ -124,9 +124,16 @@ class PositionMonitor:
 
         logger.info(f"✅ Новая позиция: {side} {symbol} {size} @ {entry}")
 
-        # Регистрируем в TrailingManager
+        # Вычисляем ATR из SL distance: SL = entry ± 1.5×ATR → ATR = SL_distance / 1.5
+        # (synced with strategist_client: sl_pct = atr_pct * 1.5)
+        atr_value = 0.0
+        if initial_sl > 0 and entry > 0:
+            sl_distance = abs(entry - initial_sl)
+            atr_value = sl_distance / 1.5
+
+        # Регистрируем в TrailingManager (передаём ATR для корректных этапов)
         if initial_sl > 0:
-            self.trailing.register_position(symbol, initial_sl)
+            self.trailing.register_position(symbol, initial_sl, atr_value=atr_value)
 
         # Telegram
         if self.bot:
@@ -242,12 +249,18 @@ class PositionMonitor:
         if current_price <= 0 or entry_price <= 0 or initial_sl <= 0:
             return
 
+        # Вычисляем ATR из SL distance (если ещё не закэширован при регистрации)
+        # SL = entry ± 1.5×ATR → ATR = SL_distance / 1.5
+        sl_distance = abs(entry_price - initial_sl)
+        atr_value = sl_distance / 1.5 if sl_distance > 0 else 0.0
+
         await self.trailing.update(
             symbol=symbol,
             side=side,
             entry_price=entry_price,
             initial_sl=initial_sl,
             current_price=current_price,
+            atr_value=atr_value,
         )
 
     # ──────────────────────────────────────────────

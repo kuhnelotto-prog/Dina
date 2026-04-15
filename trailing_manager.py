@@ -179,7 +179,7 @@ class TrailingManager:
                 event_logger.partial_close(symbol, pct=int(partial_pct*100), price=current_price, step=stage_num)
                 # Синхронизируем risk_manager
                 if self.risk_manager:
-                    remaining = {2: 0.75, 3: 2/3}  # после шага 2: 75%, после шага 3: ~50%
+                    remaining = {2: 0.75, 3: 0.5625}  # после шага 2: 75%, после шага 3: 56.25% (75%×75%)
                     if stage_num in remaining:
                         self.risk_manager.update_position_size(symbol, remaining_pct=remaining[stage_num])
             else:

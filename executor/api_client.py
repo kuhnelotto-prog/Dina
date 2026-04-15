@@ -10,7 +10,7 @@ import logging
 import uuid
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -42,7 +42,7 @@ class BitgetAPIClient:
                      f"passphrase={self._mask(cfg.passphrase)} "
                      f"dry_run={cfg.dry_run}")
 
-    def close(self):
+    def close(self) -> None:
         """Корректно завершает thread pool."""
         logger.info("BitgetAPIClient: shutting down thread pool...")
         self._executor.shutdown(wait=True)
@@ -51,7 +51,7 @@ class BitgetAPIClient:
     # Leverage
     # ============================================================
 
-    async def set_leverage(self):
+    async def set_leverage(self) -> None:
         """Устанавливает плечо для символа."""
         if not self._client:
             return
@@ -290,7 +290,7 @@ class BitgetAPIClient:
                     continue
                 raise
 
-    async def cancel_plan_orders(self, symbol: str):
+    async def cancel_plan_orders(self, symbol: str) -> None:
         """Отменяет все план-ордера для символа."""
         try:
             from pybitget_client import OrderApi
@@ -307,7 +307,7 @@ class BitgetAPIClient:
         except Exception as e:
             logger.warning(f"Failed to cancel plan orders: {e}")
 
-    async def cancel_sl_order(self, symbol: str):
+    async def cancel_sl_order(self, symbol: str) -> None:
         """Отменяет активный стоп-лосс план-ордер для символа."""
         try:
             from pybitget_client import OrderApi
@@ -339,8 +339,8 @@ class BitgetAPIClient:
             logger.error(f"Failed to cancel SL order for {symbol}: {e}")
 
     async def place_emergency_sl(self, symbol: str, sl_price: float,
-                                 size: float, side: str):
-        """Выставляет аварийный SL."""
+                                 size: float, side: str) -> None:
+        """Выставляет аварийный стоп-лосс ордер."""
         try:
             from pybitget_client import OrderApi
             api = OrderApi(self._client)
@@ -433,8 +433,8 @@ class BitgetAPIClient:
                 return None
         return None
 
-    async def get_positions_from_exchange(self) -> list:
-        """Получает все открытые позиции с биржи."""
+    async def get_positions_from_exchange(self) -> List[Dict]:
+        """Возвращает список открытых позиций с биржи."""
         if not self._client:
             return []
         try:
@@ -457,11 +457,8 @@ class BitgetAPIClient:
             logger.error(f"Failed to get positions: {e}")
             return []
 
-    async def wait_fill(self, order_id: str, symbol: str, timeout: float = 5.0) -> tuple:
-        """
-        Ожидает исполнения ордера.
-        Returns: (filled_price, commission) — tuple(float|None, float)
-        """
+    async def wait_fill(self, order_id: str, symbol: str, timeout: float = 5.0) -> Tuple[Optional[float], float]:
+        """Ожидает исполнения ордера, возвращает (цена исполнения, комиссия)."""
         from pybitget_client import OrderApi
         deadline = time.time() + timeout
         api = OrderApi(self._client)

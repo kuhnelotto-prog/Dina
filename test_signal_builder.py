@@ -2,16 +2,13 @@
 """
 Тест SignalBuilder: что возвращает compute() для BTCUSDT.
 """
-import os, sys, asyncio, logging
+import sys, asyncio, logging
 from datetime import datetime, timezone, timedelta
 import pandas as pd
 
 logging.disable(logging.CRITICAL)
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from dotenv import load_dotenv
-load_dotenv()
+sys.path.insert(0, ".")
 
 from signal_builder import SignalBuilder
 

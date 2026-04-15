@@ -14,6 +14,7 @@ risk_manager.py
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, List, Dict, Tuple
@@ -67,7 +68,7 @@ class RiskManager:
         self._open_positions: Dict[str, dict] = {}          # symbol -> position info
         self._open_count: int = 0
         self._daily_pnl: float = 0.0
-        self._day_start: float = time.time()
+        self._day_start: datetime = datetime.now(timezone.utc)
 
         # Кэш свечей 4H для расчёта корреляции секторов
         # (symbol, "4h") -> pd.DataFrame с колонкой "close"
@@ -82,7 +83,7 @@ class RiskManager:
             "AI": [],                       # зарезервировано
             "Gaming": [],                   # зарезервировано
             "Infra": [],                    # зарезервировано
-            "Meme": [],  # DOGE removed in P3 v2
+            "Meme": ["DOGEUSDT"],
             "Alt_L1": ["XRPUSDT", "SOLUSDT"],
         }
 
@@ -235,7 +236,19 @@ class RiskManager:
                 f"(×{volatile_multiplier})"
             )
 
-        # 7. Всё прошло
+        # 7. VaR-проверка
+        var_ok, var_usd = self.check_var_limit(portfolio)
+        if not var_ok:
+            self.apply_var_reduction()
+            var_msg = f"VaR limit exceeded: ${var_usd:.0f} > {portfolio.balance * 0.10:.0f} (10% of balance)"
+            return RiskStatus(
+                allowed=False,
+                state=DrawdownState.DEGRADED,
+                reason=var_msg,
+                size_result=size_result,
+            )
+
+        # 8. Всё прошло
         return RiskStatus(
             allowed=True,
             state=state,
@@ -319,7 +332,7 @@ class RiskManager:
             df = self._candle_cache.get(sym)
             if df is None or len(df) < candle_window:
                 continue
-            close = df["close"] if "close" in df.columns else df.iloc[:, 3]
+            close = df["close"] if "close" in df.columns else df.iloc[:, 4]
             close = close.tail(candle_window).astype(float)
             ret = close.pct_change().dropna()
             if len(ret) >= candle_window - 1:
@@ -382,7 +395,7 @@ class RiskManager:
         
         # Проверка 1: если corr > 0.85 в 2+ секторах → блокируем шорт
         high_corr_sectors = [s for s, c in sector_corrs.items() if c > 0.85]
-        if len(high_corr_sectors) >= 2:
+        if len(high_corr_sectors) >= 2 and self._open_count > 0:
             return (
                 False, 0.0,
                 f"🚫 SHORT blocked: high correlation (>0.85) in {len(high_corr_sectors)} sectors: "
@@ -493,8 +506,8 @@ class RiskManager:
     # ============================================================
 
     def _reset_daily_if_needed(self):
-        now = time.time()
-        if now - self._day_start >= 86400:
+        now = datetime.now(timezone.utc)
+        if now.date() > self._day_start.date():
             logger.info(f"RiskManager: reset daily PnL (was {self._daily_pnl:+.2f}$)")
             self._daily_pnl = 0.0
             self._day_start = now

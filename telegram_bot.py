@@ -15,7 +15,6 @@ Telegram-интерфейс для Дины.
 
 import asyncio
 import logging
-import os
 import smtplib
 import time
 from collections import deque
@@ -25,6 +24,7 @@ from email.mime.multipart import MIMEMultipart
 from enum import Enum
 from typing import Optional, Dict, List
 
+from config import settings
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
@@ -40,11 +40,11 @@ class EmailNotifier:
     """Асинхронный email-отправщик для critical-алертов когда Telegram недоступен."""
 
     def __init__(self):
-        self.smtp_host = os.getenv("SMTP_HOST", "")
-        self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
-        self.smtp_user = os.getenv("SMTP_USER", "")
-        self.smtp_password = os.getenv("SMTP_PASSWORD", "")
-        self.alert_email_to = os.getenv("ALERT_EMAIL_TO", "")
+        self.smtp_host = settings.email.smtp_host or ""
+        self.smtp_port = settings.email.smtp_port
+        self.smtp_user = settings.email.smtp_user or ""
+        self.smtp_password = settings.email.smtp_password or ""
+        self.alert_email_to = settings.email.alert_email_to or ""
         self._configured = bool(self.smtp_host and self.smtp_user and self.smtp_password and self.alert_email_to)
 
         if self._configured:
@@ -630,12 +630,13 @@ class DinaBot:
         lines = [f"Статус: {state_emoji[self.state]}\n"]
         if self.executor and self.symbols:
             pos = await self.executor.get_position(self.symbols[0])
-            if pos.is_open:
+            if pos and pos.is_open:
                 pnl_sign = "+" if pos.unrealized_pnl >= 0 else ""
                 lines.append(
                     f"📌 Позиция: {pos.side.value.upper()}\n"
                     f"Вход: {pos.avg_price:.2f}\n"
                     f"Размер: {pos.size} монет\n"
+                    f"Плечо: {pos.leverage}x\n"
                     f"Unr. PnL: {pnl_sign}{pos.unrealized_pnl:.2f}$\n"
                 )
             else:

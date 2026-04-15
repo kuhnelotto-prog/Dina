@@ -6,12 +6,13 @@ learning_engine.py
 
 import asyncio
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Set, Tuple
 
 import aiosqlite
+
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ class LearningEngine:
                  max_drift: float = MAX_DRIFT,
                  decay_factor: float = DECAY_FACTOR,
                  update_every_n_trades: int = 10):
-        self.db_path: str = db_path or str(os.getenv("DB_PATH", "dina.db"))
+        self.db_path: str = db_path or settings.trading.db_path
         self.min_trades_total = min_trades_total
         self.min_trades_per_source = min_trades_per_source
         self.max_drift = max_drift

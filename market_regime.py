@@ -82,9 +82,10 @@ class MarketRegimeDetector:
         if df is None or len(df) < self.ema_period + self.atr_avg_window:
             return MarketRegime.SIDEWAYS  # недостаточно данных
 
-        close = df["close"].astype(float) if "close" in df.columns else df.iloc[:, 3].astype(float)
-        high = df["high"].astype(float) if "high" in df.columns else df.iloc[:, 1].astype(float)
-        low = df["low"].astype(float) if "low" in df.columns else df.iloc[:, 2].astype(float)
+        # OHLCV column order: [0]ts [1]open [2]high [3]low [4]close [5]volume
+        close = df["close"].astype(float) if "close" in df.columns else df.iloc[:, 4].astype(float)
+        high = df["high"].astype(float) if "high" in df.columns else df.iloc[:, 2].astype(float)
+        low = df["low"].astype(float) if "low" in df.columns else df.iloc[:, 3].astype(float)
 
         # EMA50
         ema = close.ewm(span=self.ema_period, adjust=False).mean()
@@ -151,9 +152,10 @@ class MarketRegimeDetector:
         if df is None or len(df) < self.atr_period + self.atr_avg_window:
             return 1.0
 
-        close = df["close"].astype(float) if "close" in df.columns else df.iloc[:, 3].astype(float)
-        high = df["high"].astype(float) if "high" in df.columns else df.iloc[:, 1].astype(float)
-        low = df["low"].astype(float) if "low" in df.columns else df.iloc[:, 2].astype(float)
+        # OHLCV column order: [0]ts [1]open [2]high [3]low [4]close [5]volume
+        close = df["close"].astype(float) if "close" in df.columns else df.iloc[:, 4].astype(float)
+        high = df["high"].astype(float) if "high" in df.columns else df.iloc[:, 2].astype(float)
+        low = df["low"].astype(float) if "low" in df.columns else df.iloc[:, 3].astype(float)
 
         tr = pd.concat([
             high - low,

@@ -3,7 +3,6 @@
 Упрощённое сравнение порогов SHORT: старый 0.40 flat vs новый динамический.
 Использует существующий Backtester из symbol_backtest.py.
 """
-import os
 import sys
 import pandas as pd
 import numpy as np
@@ -15,17 +14,15 @@ warnings.filterwarnings("ignore")
 
 logging.disable(logging.CRITICAL)
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ".")
 
-from dotenv import load_dotenv
-load_dotenv()
-
+from config import settings
 from backtester import Backtester
 
 # ============================================================================
 # Конфигурация
 # ============================================================================
-SYMBOLS = os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,AVAXUSDT,DOGEUSDT,ADAUSDT,LINKUSDT,UNIUSDT").split(",")
+SYMBOLS = settings.trading.symbols
 START_DATE = datetime.now(timezone.utc) - timedelta(days=90)
 END_DATE = datetime.now(timezone.utc) - timedelta(minutes=5)
 

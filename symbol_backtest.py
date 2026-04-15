@@ -1,5 +1,4 @@
 """Backtest each symbol from .env individually and aggregate results."""
-import os
 import requests
 import pandas as pd
 import numpy as np
@@ -9,8 +8,7 @@ import logging
 
 logging.disable(logging.CRITICAL)
 
-from dotenv import load_dotenv
-load_dotenv()
+from config import settings
 from backtester import Backtester
 
 now = datetime.now(tz=timezone.utc)
@@ -76,8 +74,7 @@ def run_symbol_backtest(symbol):
     return result
 
 def main():
-    symbols_str = os.getenv("SYMBOLS", "BTCUSDT")
-    symbols = [s.strip() for s in symbols_str.split(",") if s.strip()]
+    symbols = settings.trading.symbols
     print(f"Testing {len(symbols)} symbols: {', '.join(symbols)}")
     print()
 

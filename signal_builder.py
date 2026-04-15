@@ -187,7 +187,7 @@ class SignalBuilder:
             calc = IndicatorsCalculator()
             # Look-ahead fix: для старших ТФ (1h, 4h) используем только закрытые свечи
             # Последняя свеча может быть ещё незакрыта — отбрасываем её
-            df_closed = df.iloc[:-1] if tf in ("1h", "4h") else df
+            df_closed = df.iloc[:-1]  # для всех ТФ — последняя свеча может быть незакрыта
             indicators = calc.compute(df_closed)
             if "error" in indicators:
                 missing_tfs.append(tf)
@@ -225,7 +225,7 @@ class SignalBuilder:
             logger.debug(f"No 1D data for {symbol}, skipping daily trend filter")
             return True
 
-        close = df_1d["close"] if "close" in df_1d.columns else df_1d.iloc[:, 3]
+        close = df_1d["close"] if "close" in df_1d.columns else df_1d.iloc[:, 4]  # OHLCV: [4]=close
         ema50 = close.ewm(span=self._ema50_1d_window, adjust=False).mean()
         
         # Look-ahead fix: используем последнюю закрытую 1D свечу (iloc[-2])
@@ -354,7 +354,7 @@ class SignalBuilder:
         """
         # ── STATE слой (базовый фон, max = 4.0) ──
         state_score = 0.0
-        state_max = 4.0  # 4 компонента по 1.0
+        state_max = 3.3  # 4 компонента, но с частичными баллами (RSI soft zones + BB squeeze)
 
         # 1. EMA trend state (вес 1.0)
         if signals.get("ema_bullish"):
@@ -452,7 +452,7 @@ class SignalBuilder:
             if composite_score < threshold:
                 return False
         else:  # SHORT — intentionally stricter than LONG
-            threshold = 0.35 if btc_regime == "BEAR" else 0.35  # P3 v2 tuned (was 0.30/0.45)
+            threshold = 0.45 if btc_regime == "BULL" else 0.35  # SHORT: строже на бычьем (BULL=0.45), агрессивнее на медвежьем (BEAR=0.35)
             if composite_score > -threshold:
                 return False
         
@@ -512,7 +512,7 @@ class SignalBuilder:
             logger.debug("No BTC 4H data for regime detection, defaulting to BULL")
             return "BULL"
 
-        close = df_4h["close"] if "close" in df_4h.columns else df_4h.iloc[:, 3]
+        close = df_4h["close"] if "close" in df_4h.columns else df_4h.iloc[:, 4]  # OHLCV: [4]=close
         ema50 = close.ewm(span=50, adjust=False).mean()
 
         # Look-ahead fix: используем последнюю закрытую 4H свечу (iloc[-2])
@@ -534,7 +534,7 @@ class SignalBuilder:
         if df_4h is None or len(df_4h) < self._regime_ema_slow + 1:
             return "SIDEWAYS"  # недостаточно данных — нейтральный режим
 
-        close = df_4h["close"] if "close" in df_4h.columns else df_4h.iloc[:, 3]
+        close = df_4h["close"] if "close" in df_4h.columns else df_4h.iloc[:, 4]  # OHLCV: [4]=close
         ema_fast = close.ewm(span=self._regime_ema_fast, adjust=False).mean()
         ema_slow = close.ewm(span=self._regime_ema_slow, adjust=False).mean()
 

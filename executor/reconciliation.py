@@ -54,13 +54,21 @@ class ReconciliationManager:
 
                 side = PositionSide.LONG if hold_side == "long" else PositionSide.SHORT
 
+                # Читаем реальное плечо из ответа биржи
+                leverage = int(p.get("leverage", self.cfg.leverage) or self.cfg.leverage)
+                unrealized_pnl = float(p.get("unrealisedPnl", 0) or p.get("unrealizedPnl", 0) or 0)
+                margin = float(p.get("margin", 0) or p.get("marginSize", 0) or 0)
+
                 # Если позиция уже в памяти — обновляем
                 if symbol in self._positions:
                     pos = self._positions[symbol]
                     pos.size = size
                     pos.avg_price = avg_price
                     pos.side = side
-                    logger.info(f"Reconcile: updated {symbol} {side.value} size={size}")
+                    pos.leverage = leverage
+                    pos.unrealized_pnl = unrealized_pnl
+                    pos.margin = margin
+                    logger.info(f"Reconcile: updated {symbol} {side.value} size={size} leverage={leverage}x")
                 else:
                     # Новая позиция — создаём
                     self._positions[symbol] = PositionInfo(
@@ -68,9 +76,11 @@ class ReconciliationManager:
                         side=side,
                         size=size,
                         avg_price=avg_price,
-                        leverage=self.cfg.leverage,
+                        leverage=leverage,
+                        unrealized_pnl=unrealized_pnl,
+                        margin=margin,
                     )
-                    logger.info(f"Reconcile: restored {symbol} {side.value} size={size} @ {avg_price}")
+                    logger.info(f"Reconcile: restored {symbol} {side.value} size={size} @ {avg_price} leverage={leverage}x")
 
                 # Восстанавливаем trailing state из БД
                 if self._trailing_mgr:

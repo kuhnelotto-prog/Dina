@@ -10,13 +10,14 @@ performance_attribution.py
 
 import asyncio
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, List, Dict
 
 import aiosqlite
+
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ from typing import Optional
 
 class PerformanceAttribution:
     def __init__(self, db_path: Optional[str] = None):
-        self.db_path: str = db_path or str(os.getenv("DB_PATH", "dina.db"))
+        self.db_path: str = db_path or settings.trading.db_path
         self._open_trades: Dict[str, AttributedTrade] = {}
 
     async def setup(self):

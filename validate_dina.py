@@ -17,18 +17,14 @@ validate_dina.py
 
 import asyncio
 import argparse
-import os
 import sys
 import traceback
-from dotenv import load_dotenv
 
 # Fix Windows console encoding for Unicode box-drawing characters
 if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 if sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-
-load_dotenv()
 
 # Вспомогательный класс для отчётов
 class Reporter:
@@ -87,15 +83,23 @@ def _run(coro):
 # ============================================================
 def test_env():
     R.suite("1. Переменные окружения")
-    required = ["TELEGRAM_BOT_TOKEN", "BITGET_API_KEY", "BITGET_API_SECRET", "BITGET_PASSPHRASE"]
-    missing = [k for k in required if not os.getenv(k)]
+    from config import settings
+    missing = []
+    if not settings.bitget.api_key:
+        missing.append("BITGET_API_KEY")
+    if not settings.bitget.api_secret:
+        missing.append("BITGET_API_SECRET")
+    if not settings.bitget.passphrase:
+        missing.append("BITGET_PASSPHRASE")
+    if not settings.telegram.bot_token:
+        missing.append("TELEGRAM_BOT_TOKEN")
     if missing:
         for k in missing:
             R.fail(f"{k} не задан")
     else:
         R.ok("Все обязательные переменные заданы")
 
-    if os.getenv("DRY_RUN", "true").lower() != "true":
+    if not settings.trading.dry_run:
         R.skip("DRY_RUN != true", "бот будет торговать реальными деньгами!")
 
 # ============================================================
@@ -339,7 +343,7 @@ def test_integration():
         from position_sizer import PortfolioState, SizerConfig
         from risk_manager import RiskManager
         from bitget_executor import BitgetExecutor, ExecutorConfig, OrderRequest
-        from telegram_bot import DinaBot, TelegramConfig
+        from telegram_bot import DinaBot, TelegramBotConfig
 
         portfolio = PortfolioState(balance=10000)
         rm = RiskManager(sizer_config=SizerConfig(base_risk_pct=1.0), max_open_positions=1, daily_loss_limit=5.0)

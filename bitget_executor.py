@@ -190,14 +190,15 @@ class BitgetExecutor:
 
         logger.info(f"BitgetExecutor init | symbol={self.cfg.symbol} leverage={self.cfg.leverage}x dry_run={self.cfg.dry_run}")
 
-    def set_strategist(self, strategist):
+    def set_strategist(self, strategist: Any) -> None:
+        """Устанавливает стратег-модуль для уведомлений о сделках."""
         self._strategist = strategist
 
     # ============================================================
     # Setup
     # ============================================================
 
-    async def setup(self):
+    async def setup(self) -> None:
         """Создаёт таблицы, устанавливает плечо, инициализирует подмодули."""
         await self._init_db()
 
@@ -236,7 +237,7 @@ class BitgetExecutor:
             await self._reconciliation_mgr.reconcile()
             logger.info("BitgetExecutor: подключен к Bitget")
 
-    async def _init_db(self):
+    async def _init_db(self) -> None:
         """Создаёт таблицы order_log, active_trailing, active_positions."""
         async with aiosqlite.connect(self.cfg.db_path) as db:
             await db.execute("""
@@ -290,8 +291,8 @@ class BitgetExecutor:
     # Graceful shutdown
     # ============================================================
 
-    async def shutdown(self):
-        """Корректное завершение: новые ордера не размещаются, текущие завершаются."""
+    async def shutdown(self) -> None:
+        """Корректное завершение: останавливает трейлинг и закрывает API pool."""
         logger.info("BitgetExecutor: shutdown initiated...")
         self._shutting_down = True
 
@@ -309,13 +310,13 @@ class BitgetExecutor:
     # Exchange connectivity tracking
     # ============================================================
 
-    def _record_api_success(self):
+    def _record_api_success(self) -> None:
         """Сбрасывает счётчик сбоев при успешном API вызове."""
         if self._consecutive_failures > 0:
             logger.info(f"Exchange connectivity restored (was {self._consecutive_failures} consecutive failures)")
         self._consecutive_failures = 0
 
-    def _record_api_failure(self):
+    def _record_api_failure(self) -> None:
         """Увеличивает счётчик сбоев, уведомляет при потере связи."""
         self._consecutive_failures += 1
         if self._consecutive_failures >= self._MAX_CONSECUTIVE_FAILURES:
@@ -346,17 +347,17 @@ class BitgetExecutor:
         """Закрывает позицию полностью."""
         return await self._order_mgr.close_position(symbol, reason)
 
-    async def partial_close(self, symbol: str, side: str, pct: float):
-        """Закрыть pct% позиции по рынку."""
+    async def partial_close(self, symbol: str, side: str, pct: float) -> None:
+        """Закрывает указанный процент позиции по рынку."""
         await self._order_mgr.partial_close(symbol, side, pct)
 
-    async def move_stop_loss(self, symbol: str, side: str, new_sl: float):
-        """Переставить стоп-ордер на новую цену."""
+    async def move_stop_loss(self, symbol: str, side: str, new_sl: float) -> None:
+        """Переставляет стоп-лосс ордер на новую цену."""
         await self._trailing_mgr.move_stop_loss(symbol, side, new_sl)
 
-    async def get_position(self, symbol: str) -> PositionInfo:
-        """Возвращает информацию о позиции из памяти."""
-        return self._positions.get(symbol, PositionInfo(symbol=symbol, side=PositionSide.NONE))
+    async def get_position(self, symbol: str) -> Optional[PositionInfo]:
+        """Возвращает информацию о позиции из памяти, или None если позиции нет."""
+        return self._positions.get(symbol) or None
 
     async def get_positions_from_exchange(self) -> List[PositionInfo]:
         """Получает позиции с биржи."""
@@ -382,8 +383,8 @@ class BitgetExecutor:
             ))
         return result
 
-    async def get_open_positions(self):
-        """Возвращает список открытых позиций из памяти."""
+    async def get_open_positions(self) -> List[Dict]:
+        """Возвращает список открытых позиций из памяти с текущими ценами."""
         positions = []
         for symbol, pos in self._positions.items():
             if pos.is_open:
@@ -429,8 +430,8 @@ class BitgetExecutor:
     # Reconciliation
     # ============================================================
 
-    async def _reconcile(self):
-        """Восстанавливает позиции с биржи."""
+    async def _reconcile(self) -> None:
+        """Восстанавливает позиции с биржи через reconciliation manager."""
         if self._reconciliation_mgr:
             await self._reconciliation_mgr.reconcile()
 
@@ -440,13 +441,14 @@ class BitgetExecutor:
 
     async def _save_trailing_state(self, symbol: str, activated: bool,
                                    trailing_stop: float, stage: int,
-                                   plan_order_id: str):
+                                   plan_order_id: str) -> None:
         await self._trailing_mgr.save_trailing_state(symbol, activated, trailing_stop, stage, plan_order_id)
 
-    async def _restore_trailing_state(self, symbol: str):
+    async def _restore_trailing_state(self, symbol: str) -> Optional[Dict]:
+        """Восстанавливает состояние трейлинга из БД."""
         return await self._trailing_mgr.restore_trailing_state(symbol)
 
-    async def _clear_trailing_state(self, symbol: str):
+    async def _clear_trailing_state(self, symbol: str) -> None:
         await self._trailing_mgr.clear_trailing_state(symbol)
 
     # ============================================================
@@ -484,21 +486,21 @@ class BitgetExecutor:
     def _execution_guard_check(self, req: OrderRequest) -> bool:
         return self._guard.check(req)
 
-    async def _cancel_sl_order(self, symbol: str):
+    async def _cancel_sl_order(self, symbol: str) -> None:
         if self.cfg.dry_run:
             logger.info(f"[DRY] cancel_sl_order {symbol}")
             return
         await self._api_client.cancel_sl_order(symbol)
 
-    async def _cancel_plan_orders(self, symbol: str):
+    async def _cancel_plan_orders(self, symbol: str) -> None:
         await self._api_client.cancel_plan_orders(symbol)
 
-    async def _monitor_loop(self):
-        """Запускается в отдельной задаче для управления позициями."""
+    async def _monitor_loop(self) -> None:
+        """Запускает цикл управления позициями через трейлинг-менеджер."""
         await self._trailing_mgr.monitor_loop(self.close_position)
 
-    async def _retry(self, func, *args, **kwargs):
-        """Retry с экспоненциальным backoff."""
+    async def _retry(self, func: Any, *args: Any, **kwargs: Any) -> Any:
+        """Повторяет async-вызов с экспоненциальным backoff."""
         last_exc = None
         for attempt in range(self.cfg.max_retries):
             try:

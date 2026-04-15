@@ -168,22 +168,46 @@ class SafetyGuard:
         sl_dist = self.cfg.emergency_sl_atr_multiplier * atr
         emergency_sl = (entry - sl_dist) if side == "long" else (entry + sl_dist)
 
-        msg = (f"🛡️ EMERGENCY SL: {symbol} {side.upper()} "
-               f"SL отсутствует! "
-               f"Выставляю SL={emergency_sl:.4f} "
-               f"(entry={entry:.4f})")
-        logger.warning(msg)
-        await self._notify(symbol, msg, level="critical", force=True)
+        # Проверяем: если цена уже прошла SL — закрываем по рынку
+        mark = float(pos.get("markPrice") or pos.get("current_price") or 0)
+        close_by_market = False
+        if mark > 0:
+            if side == "long" and mark < emergency_sl:
+                close_by_market = True
+            elif side == "short" and mark > emergency_sl:
+                close_by_market = True
 
-        if not self.cfg.dry_run:
-            try:
-                await self.executor.place_stop_loss(
-                    symbol=symbol, side=side, sl_price=emergency_sl)
-                logger.info("SafetyGuard: SL выставлен %s @ %.4f", symbol, emergency_sl)
-            except Exception as exc:
-                logger.error("SafetyGuard: не удалось выставить SL %s: %s", symbol, exc)
+        if close_by_market:
+            msg = (f"🚨 EMERGENCY CLOSE: {symbol} {side.upper()} "
+                   f"цена ({mark:.4f}) уже ниже/выше SL ({emergency_sl:.4f}) — "
+                   f"закрываем по рынку")
+            logger.warning(msg)
+            await self._notify(symbol, msg, level="critical", force=True)
+            if not self.cfg.dry_run:
+                try:
+                    await self.executor.close_position(symbol=symbol, reason="emergency_sl_breached")
+                    logger.info("SafetyGuard: позиция %s закрыта по рынку (SL breached)", symbol)
+                except Exception as exc:
+                    logger.error("SafetyGuard: не удалось закрыть %s: %s", symbol, exc)
+            else:
+                logger.info("SafetyGuard [DRY-RUN]: закрытие %s пропущено (SL breached)", symbol)
         else:
-            logger.info("SafetyGuard [DRY-RUN]: SL не выставлен для %s", symbol)
+            msg = (f"🛡️ EMERGENCY SL: {symbol} {side.upper()} "
+                   f"SL отсутствует! "
+                   f"Выставляю SL={emergency_sl:.4f} "
+                   f"(entry={entry:.4f})")
+            logger.warning(msg)
+            await self._notify(symbol, msg, level="critical", force=True)
+
+            if not self.cfg.dry_run:
+                try:
+                    await self.executor.place_stop_loss(
+                        symbol=symbol, side=side, sl_price=emergency_sl)
+                    logger.info("SafetyGuard: SL выставлен %s @ %.4f", symbol, emergency_sl)
+                except Exception as exc:
+                    logger.error("SafetyGuard: не удалось выставить SL %s: %s", symbol, exc)
+            else:
+                logger.info("SafetyGuard [DRY-RUN]: SL не выставлен для %s", symbol)
 
     # ── Вспомогательные ─────────────────────────
     async def _get_open_positions(self) -> list:

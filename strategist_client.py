@@ -30,8 +30,8 @@ ENTRY_THRESHOLD_LONG_BULL = 0.20      # bullish → агрессивнее (P3 t
 ENTRY_THRESHOLD_LONG_BEAR = 0.30      # bearish → консервативнее (P3 tuned, was 0.45)
 
 # SHORT пороги по режиму BTC:
-ENTRY_THRESHOLD_SHORT_BULL = 0.35     # bullish → консервативнее (P3 tuned, was 0.45)
-ENTRY_THRESHOLD_SHORT_BEAR = 0.35     # bearish → SHORT moderate (P3 v2 tuned, was 0.30)
+ENTRY_THRESHOLD_SHORT_BULL = 0.45     # bullish → строже на бычьем рынке (шорт против тренда)
+ENTRY_THRESHOLD_SHORT_BEAR = 0.35     # bearish → агрессивнее на медвежьем (шорт по тренду)
 
 # Funding rate: если |funding| > этого порога, повышаем threshold на FUNDING_PENALTY
 FUNDING_EXTREME_THRESHOLD = 0.0005  # 0.05% за 8 часов = ~0.15%/день
@@ -145,14 +145,28 @@ class StrategistClient:
                 return
 
         # ── Funding rate коррекция порога ──
+        # Положительный funding = лонги платят шортам → штраф для LONG, бонус для SHORT
+        # Отрицательный funding = шорты платят лонгам → штраф для SHORT, бонус для LONG
         funding_penalty = 0.0
         try:
             funding_rate = await self.executor.get_funding_rate(symbol)
-            if abs(funding_rate) > FUNDING_EXTREME_THRESHOLD:
-                funding_penalty = FUNDING_PENALTY
+            if funding_rate > FUNDING_EXTREME_THRESHOLD:
+                if self.direction == "LONG":
+                    funding_penalty = FUNDING_PENALTY   # лонг платит — штраф
+                else:
+                    funding_penalty = -FUNDING_PENALTY  # шорт получает — бонус
                 logger.info(
-                    f"[{self.direction}] {symbol}: extreme funding={funding_rate:.6f}, "
-                    f"threshold +{FUNDING_PENALTY}"
+                    f"[{self.direction}] {symbol}: positive funding={funding_rate:.6f}, "
+                    f"threshold {'+' if funding_penalty > 0 else ''}{funding_penalty:.2f}"
+                )
+            elif funding_rate < -FUNDING_EXTREME_THRESHOLD:
+                if self.direction == "SHORT":
+                    funding_penalty = FUNDING_PENALTY   # шорт платит — штраф
+                else:
+                    funding_penalty = -FUNDING_PENALTY  # лонг получает — бонус
+                logger.info(
+                    f"[{self.direction}] {symbol}: negative funding={funding_rate:.6f}, "
+                    f"threshold {'+' if funding_penalty > 0 else ''}{funding_penalty:.2f}"
                 )
         except Exception as e:
             logger.debug(f"[{self.direction}] {symbol}: funding rate unavailable: {e}")
@@ -209,7 +223,7 @@ class StrategistClient:
         # ── SL/TP по ATR ──
         atr_pct = signal.get("atr_pct", 1.0)
         sl_pct = atr_pct * 1.5
-        tp_pct = sl_pct * 2.0
+        tp_pct = atr_pct * 2.0  # TP привязан к ATR напрямую, синхронизирован с трейлинг-этапом 4 (2.0 ATR)
 
         if side == "long":
             sl_price = price * (1 - sl_pct / 100)

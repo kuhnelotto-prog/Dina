@@ -3,7 +3,7 @@
 Сравнение порогов SHORT с использованием обновлённого Backtester.
 Backtester теперь использует STATE-based _compute_composite() и поддерживает LONG+SHORT.
 """
-import os, sys, json, logging, warnings, time
+import sys, json, logging, warnings, time
 from datetime import datetime, timezone, timedelta
 import pandas as pd
 import numpy as np
@@ -11,17 +11,15 @@ import numpy as np
 warnings.filterwarnings("ignore")
 logging.disable(logging.CRITICAL)
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ".")
 
-from dotenv import load_dotenv
-load_dotenv()
-
+from config import settings
 from backtester import Backtester
 
 # ============================================================================
 # Конфигурация
 # ============================================================================
-SYMBOLS = os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,AVAXUSDT,DOGEUSDT,ADAUSDT,LINKUSDT,UNIUSDT").split(",")
+SYMBOLS = settings.trading.symbols
 START_DATE = datetime.now(timezone.utc) - timedelta(days=90)
 END_DATE = datetime.now(timezone.utc) - timedelta(minutes=5)
 

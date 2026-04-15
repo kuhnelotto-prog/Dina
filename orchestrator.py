@@ -137,18 +137,17 @@ class Orchestrator:
         # Connect learning_engine to risk_manager for emergency reset
         self.risk_manager.learning_engine = learning_engine
 
-        # SignalBuilders (shared cooldown)
-        shared_signal_time: Dict[str, float] = {}
-
+        # SignalBuilders (отдельные cooldown-словари для LONG и SHORT!)
+        # Раньше был один общий — LONG вешал замок → SHORT всегда получал cooldown
         signal_builder_long = SignalBuilder(
             symbols=symbols, timeframes=timeframes,
             learning=learning_engine, direction="LONG",
-            bus=self.bus, shared_signal_time=shared_signal_time,
+            bus=self.bus, shared_signal_time={},
         )
         signal_builder_short = SignalBuilder(
             symbols=symbols, timeframes=timeframes,
             learning=learning_engine, direction="SHORT",
-            bus=self.bus, shared_signal_time=shared_signal_time,
+            bus=self.bus, shared_signal_time={},
         )
 
         # Telegram

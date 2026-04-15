@@ -3,7 +3,6 @@
 Сравнение старого порога SHORT (0.40 flat) vs нового динамического (BEAR=0.30, SIDEWAYS=0.40, BULL=0.50)
 по каждой монете из SYMBOLS за последние 90 дней.
 """
-import os
 import sys
 import asyncio
 import pandas as pd
@@ -19,10 +18,7 @@ warnings.filterwarnings("ignore")
 logging.disable(logging.CRITICAL)
 
 # Добавляем путь к модулям
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from dotenv import load_dotenv
-load_dotenv()
+sys.path.insert(0, ".")
 
 from backtester import Backtester, BacktestPosition
 from indicators_calc import IndicatorsCalculator
@@ -33,7 +29,8 @@ from position_sizer import PositionSizer
 # ============================================================================
 # Конфигурация
 # ============================================================================
-SYMBOLS = os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,AVAXUSDT,DOGEUSDT,ADAUSDT,LINKUSDT,UNIUSDT").split(",")
+from config import settings
+SYMBOLS = settings.trading.symbols
 TIMEFRAMES = ["15m", "1h", "4h", "1d"]
 START_DATE = datetime.now(timezone.utc) - timedelta(days=90)
 END_DATE = datetime.now(timezone.utc) - timedelta(minutes=5)

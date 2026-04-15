@@ -119,17 +119,11 @@ class IndicatorsCalculator:
             open_.iloc[last] > close.iloc[prev]
         )
 
-        # Fair Value Gap (бычий) - трёхсвечная проверка
-        # Бычий FVG: low[last] > high[pprev] и свеча между (prev) не перекрывает гэп
-        fvg_bull = bool(
-            low.iloc[last] > high.iloc[pprev] and
-            high.iloc[prev] < low.iloc[last]
-        )
-        # Медвежий FVG: high[last] < low[pprev] и свеча между (prev) не перекрывает гэп
-        fvg_bear = bool(
-            high.iloc[last] < low.iloc[pprev] and
-            low.iloc[prev] > high.iloc[last]
-        )
+        # Fair Value Gap (бычий) — гэп между low[last] и high[pprev]
+        # Бычий FVG: low последней свечи выше high свечи pprev → незаполненный гэп вверх
+        fvg_bull = bool(low.iloc[last] > high.iloc[pprev])
+        # Медвежий FVG: high последней свечи ниже low свечи pprev → незаполненный гэп вниз
+        fvg_bear = bool(high.iloc[last] < low.iloc[pprev])
 
         return {
             "engulfing_bull": bullish_engulfing,

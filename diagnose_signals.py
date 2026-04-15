@@ -3,17 +3,14 @@
 Диагностика: почему composite_score всегда ~0.
 Проходим по каждой свече BTCUSDT 4H за 90 дней и выводим raw сигналы.
 """
-import os, sys, logging
+import sys, logging
 import pandas as pd
 import numpy as np
 from datetime import datetime, timezone, timedelta
 from collections import Counter
 
 logging.disable(logging.CRITICAL)
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from dotenv import load_dotenv
-load_dotenv()
+sys.path.insert(0, ".")
 
 from indicators_calc import IndicatorsCalculator
 
