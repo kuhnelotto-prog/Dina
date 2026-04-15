@@ -79,7 +79,7 @@ class TelegramConfig:
 class TradingConfig:
     dry_run: bool = field(default_factory=lambda: _optional("DRY_RUN", "true").lower() == "true")
     starting_balance: float = field(default_factory=lambda: _float("STARTING_BALANCE", 10000))
-    symbols: List[str] = field(default_factory=lambda: _list("SYMBOLS", "BTCUSDT,ETHUSDT,XRPUSDT,DOGEUSDT,LINKUSDT"))
+    symbols: List[str] = field(default_factory=lambda: _list("SYMBOLS", "BTCUSDT,ETHUSDT,BNBUSDT,XRPUSDT,DOGEUSDT,LINKUSDT,SOLUSDT,AVAXUSDT,ADAUSDT,SUIUSDT"))
     timeframes: List[str] = field(default_factory=lambda: _list("TIMEFRAMES", "15m,1h,4h"))
     timeframe_weights: List[float] = field(default_factory=lambda: [
         float(x) for x in _list("TIMEFRAME_WEIGHTS", "0.2,0.3,0.5")

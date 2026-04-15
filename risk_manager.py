@@ -78,18 +78,19 @@ class RiskManager:
         # Обновлено после бэктестов: оставлены только прибыльные монеты
         self.SECTOR_GROUPS = {
             "L1": ["BTCUSDT", "ETHUSDT"],
-            "L2": [],                       # зарезервировано
+            "L2": ["BNBUSDT"],              # BNB Chain L2
             "DeFi": ["LINKUSDT"],
             "AI": [],                       # зарезервировано
             "Gaming": [],                   # зарезервировано
-            "Infra": [],                    # зарезервировано
+            "Infra": ["AVAXUSDT"],          # Avalanche Subnets
             "Meme": ["DOGEUSDT"],
-            "Alt_L1": ["XRPUSDT", "SOLUSDT"],
+            "Alt_L1": ["XRPUSDT", "SOLUSDT", "ADAUSDT", "SUIUSDT"],
         }
 
         # Лимиты позиций по секторам
         self.SECTOR_LIMITS = {
             "L1": 2,        # макс 2 позиции в L1
+            "Alt_L1": 2,    # макс 2 позиции в Alt_L1 (XRP, SOL, ADA, SUI)
             "default": 1,   # макс 1 позиция в остальных секторах
         }
 

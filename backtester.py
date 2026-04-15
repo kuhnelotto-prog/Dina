@@ -57,7 +57,7 @@ DAILY_LOSS_LIMIT_PCT = 5.0  # 5% дневной лимит потерь
 MAX_PORTFOLIO_VAR_PCT = 15.0  # максимум 15% портфеля под риском (VaR)
 MAX_SHORT_OPEN = 3           # не более 3 шортов одновременно
 MAX_OPEN_POSITIONS = 3       # максимум 3 позиции одновременно
-SYMBOLS = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "SOLUSDT", "LINKUSDT", "DOGEUSDT"]
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "SOLUSDT", "LINKUSDT", "DOGEUSDT", "AVAXUSDT", "ADAUSDT", "SUIUSDT"]
 ATR_CRISIS_MULTIPLIER = 3.0   # ATR > 3× среднего → CRISIS
 ATR_VOLATILE_MULTIPLIER = 2.0  # ATR > 2× среднего → VOLATILE
 VOLATILE_SIZE_REDUCTION = 0.5  # при VOLATILE: размер позиции × 0.5
@@ -370,8 +370,10 @@ class Backtester:
         dates = pd.date_range(start=START_DATE, end=END_DATE, freq='4h')
         # Different seed per symbol for unique data
         np.random.seed(hash(symbol) % (2**32))
-        price_bases = {"BTCUSDT": 50000, "ETHUSDT": 3000, "XRPUSDT": 0.6,
-                       "SOLUSDT": 100, "LINKUSDT": 15, "DOGEUSDT": 0.1}
+        price_bases = {"BTCUSDT": 50000, "ETHUSDT": 3000, "BNBUSDT": 600,
+                       "XRPUSDT": 0.6, "SOLUSDT": 100, "LINKUSDT": 15,
+                       "DOGEUSDT": 0.1, "AVAXUSDT": 30, "ADAUSDT": 0.45,
+                       "SUIUSDT": 1.5}
         base = price_bases.get(symbol, 100)
         # Proportional random walk — never goes negative
         returns = np.random.randn(len(dates)) * 0.02  # 2% std per candle
@@ -528,8 +530,8 @@ class Backtester:
         }
 
         # Динамические пороги по BTC EMA50 на 4H (P3 tuned, synced with strategist_client)
-        THRESHOLD_LONG_BULL = 0.20
-        THRESHOLD_LONG_BEAR = 0.30
+        THRESHOLD_LONG_BULL = 0.30
+        THRESHOLD_LONG_BEAR = 0.40
         THRESHOLD_SHORT_BULL = 0.45   # synced with strategist_client: ENTRY_THRESHOLD_SHORT_BULL
         THRESHOLD_SHORT_BEAR = 0.35   # synced with strategist_client: ENTRY_THRESHOLD_SHORT_BEAR
 

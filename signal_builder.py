@@ -457,7 +457,7 @@ class SignalBuilder:
         btc_regime = self.detect_btc_regime()
         
         if self._direction == "LONG":
-            threshold = 0.20 if btc_regime == "BULL" else 0.30  # P3 tuned (was 0.30/0.45)
+            threshold = 0.30 if btc_regime == "BULL" else 0.40  # LONG: stricter thresholds (was 0.20/0.30)
             if composite_score < threshold:
                 return False
         else:  # SHORT — intentionally stricter than LONG

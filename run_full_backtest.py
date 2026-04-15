@@ -17,9 +17,9 @@ from backtester import Backtester
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Символы из .env (10 штук, без SOLUSDT и DOTUSDT)
+# 10 монет — актуальный портфель (synced с config.py)
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "AVAXUSDT",
-           "DOGEUSDT", "ADAUSDT", "LINKUSDT", "ATOMUSDT", "SUIUSDT"]
+           "DOGEUSDT", "ADAUSDT", "LINKUSDT", "SOLUSDT", "SUIUSDT"]
 
 def fetch_candles(symbol, days=90, granularity="4H"):
     """Fetch real candles from Bitget."""
