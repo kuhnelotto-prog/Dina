@@ -51,6 +51,7 @@ class PositionMonitor:
         self._balance_update_interval = balance_update_interval
         self._running = False
         self._balance_counter = 0
+        self._cycle_lock = asyncio.Lock()  # предотвращает race condition между циклами
 
         # Последнее известное состояние позиций: symbol -> dict
         self._last_known: Dict[str, dict] = {}
@@ -77,7 +78,12 @@ class PositionMonitor:
         logger.info("PositionMonitor остановлен")
 
     async def _cycle(self):
-        """Один цикл мониторинга."""
+        """Один цикл мониторинга (защищён lock от наложения циклов)."""
+        async with self._cycle_lock:
+            await self._do_cycle()
+
+    async def _do_cycle(self):
+        """Внутренняя логика цикла — под lock."""
         # Обновление баланса
         self._balance_counter += 1
         if self._balance_counter % self._balance_update_interval == 0:
@@ -93,13 +99,14 @@ class PositionMonitor:
             pos = next(p for p in positions if p["symbol"] == symbol)
             await self._on_position_opened(pos)
 
-        # ❌ Закрытые позиции
-        for symbol in last_symbols - current_symbols:
-            old_pos = self._last_known[symbol]
+        # ❌ Закрытые позиции — помечаем перед обработкой, чтобы не вызвать on_trade_closed дважды
+        closed_symbols = last_symbols - current_symbols
+        for symbol in closed_symbols:
+            old_pos = self._last_known.pop(symbol)  # убираем ДО вызова, предотвращая двойной вызов
             await self._on_position_closed(old_pos)
 
-        # Обновляем last_known
-        self._last_known = {p["symbol"]: p for p in positions}
+        # Обновляем last_known (только ещё открытые)
+        self._last_known.update({p["symbol"]: p for p in positions})
 
         # Трейлинг-стоп для каждой открытой позиции
         for pos in positions:
@@ -130,6 +137,10 @@ class PositionMonitor:
         if initial_sl > 0 and entry > 0:
             sl_distance = abs(entry - initial_sl)
             atr_value = sl_distance / 1.5
+        elif entry > 0:
+            # Fallback: если SL неизвестен, оцениваем ATR как 1.5% от цены
+            atr_value = entry * 0.015
+            logger.warning(f"{symbol}: SL неизвестен, ATR fallback = {atr_value:.4f} (1.5% от entry)")
 
         # Регистрируем в TrailingManager (передаём ATR для корректных этапов)
         if initial_sl > 0:
@@ -252,7 +263,14 @@ class PositionMonitor:
         # Вычисляем ATR из SL distance (если ещё не закэширован при регистрации)
         # SL = entry ± 1.5×ATR → ATR = SL_distance / 1.5
         sl_distance = abs(entry_price - initial_sl)
-        atr_value = sl_distance / 1.5 if sl_distance > 0 else 0.0
+        if sl_distance > 0:
+            atr_value = sl_distance / 1.5
+        elif entry_price > 0:
+            # Fallback: если SL distance = 0, оцениваем ATR как 1.5% от цены
+            atr_value = entry_price * 0.015
+            logger.debug(f"{symbol}: SL distance=0, ATR fallback = {atr_value:.4f}")
+        else:
+            atr_value = 0.0
 
         await self.trailing.update(
             symbol=symbol,

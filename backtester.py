@@ -93,7 +93,10 @@ class BacktestPosition:
         self.pnl_pct = 0.0
         self.is_closed = False
         # 4-step trailing state (mirrors trailing_manager.py)
-        self.entry_atr = entry_atr if entry_atr > 0 else abs(entry_price - sl_price) / 1.5  # ATR at entry (synced with trailing_manager.py)
+        self.entry_atr = entry_atr if entry_atr > 0 else (
+            abs(entry_price - sl_price) / 1.5 if abs(entry_price - sl_price) > 0
+            else entry_price * 0.015  # fallback: 1.5% от цены (synced with position_monitor.py)
+        )
         self.initial_risk = abs(entry_price - sl_price)  # SL distance in price units (= 1.5×ATR)
         self.trailing_step = 0         # 0-4
         self.remaining_pct = 1.0       # fraction of original size still open

@@ -531,10 +531,16 @@ class RiskManager:
             return True  # символ не в секторе — пропускаем
 
         # Считаем сколько позиций уже открыто в этом секторе
+        # ТОЛЬКО позиции того же направления (LONG vs LONG, SHORT vs SHORT)
+        # Противоположные направления = хедж, не корреляция
         sector_slots_used = 0.0
         for pos in self._open_positions.values():
             pos_group = self._get_symbol_sector(pos["symbol"])
             if pos_group == symbol_group:
+                # Учитываем только позиции того же направления
+                pos_direction = pos.get("direction", pos.get("side", "long")).lower()
+                if pos_direction != direction.lower():
+                    continue  # противоположное направление = хедж, не считаем
                 # BTC занимает 0.5 слота в L1
                 if pos["symbol"] == "BTCUSDT" and symbol_group == "L1":
                     sector_slots_used += 0.5
