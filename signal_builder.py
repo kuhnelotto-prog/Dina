@@ -225,12 +225,21 @@ class SignalBuilder:
             logger.debug(f"No 1D data for {symbol}, skipping daily trend filter")
             return True
 
-        close = df_1d["close"] if "close" in df_1d.columns else df_1d.iloc[:, 4]  # OHLCV: [4]=close
+        # Безопасное извлечение close column
+        if "close" in df_1d.columns:
+            close = df_1d["close"]
+        else:
+            try:
+                close = df_1d.iloc[:, 4]
+            except (IndexError, ValueError):
+                logger.warning(f"{symbol} 1D DataFrame has unexpected shape, skipping daily trend filter")
+                return True
         ema50 = close.ewm(span=self._ema50_1d_window, adjust=False).mean()
         
-        # Look-ahead fix: используем последнюю закрытую 1D свечу (iloc[-2])
-        current_close = float(close.iloc[-2])
-        current_ema50 = float(ema50.iloc[-2])
+        # Look-ahead fix: используем последнюю закрытую 1D свечу (iloc[-2]), если есть хотя бы 2 свечи
+        idx = -2 if len(df_1d) >= 2 else -1
+        current_close = float(close.iloc[idx])
+        current_ema50 = float(ema50.iloc[idx])
 
         if direction == "LONG" and current_close < current_ema50:
             logger.info(
@@ -512,12 +521,22 @@ class SignalBuilder:
             logger.debug("No BTC 4H data for regime detection, defaulting to BULL")
             return "BULL"
 
-        close = df_4h["close"] if "close" in df_4h.columns else df_4h.iloc[:, 4]  # OHLCV: [4]=close
+        # Безопасное извлечение close column
+        if "close" in df_4h.columns:
+            close = df_4h["close"]
+        else:
+            try:
+                close = df_4h.iloc[:, 4]
+            except (IndexError, ValueError):
+                logger.warning("BTC 4H DataFrame has unexpected shape, defaulting to BULL")
+                return "BULL"
+        
         ema50 = close.ewm(span=50, adjust=False).mean()
 
-        # Look-ahead fix: используем последнюю закрытую 4H свечу (iloc[-2])
-        current_close = float(close.iloc[-2])
-        current_ema50 = float(ema50.iloc[-2])
+        # Look-ahead fix: используем последнюю закрытую 4H свечу (iloc[-2]), если есть хотя бы 2 свечи
+        idx = -2 if len(df_4h) >= 2 else -1
+        current_close = float(close.iloc[idx])
+        current_ema50 = float(ema50.iloc[idx])
 
         if current_close > current_ema50:
             return "BULL"
@@ -534,13 +553,23 @@ class SignalBuilder:
         if df_4h is None or len(df_4h) < self._regime_ema_slow + 1:
             return "SIDEWAYS"  # недостаточно данных — нейтральный режим
 
-        close = df_4h["close"] if "close" in df_4h.columns else df_4h.iloc[:, 4]  # OHLCV: [4]=close
+        # Безопасное извлечение close column
+        if "close" in df_4h.columns:
+            close = df_4h["close"]
+        else:
+            try:
+                close = df_4h.iloc[:, 4]
+            except (IndexError, ValueError):
+                logger.warning(f"{symbol} 4H DataFrame has unexpected shape, defaulting to SIDEWAYS")
+                return "SIDEWAYS"
+
         ema_fast = close.ewm(span=self._regime_ema_fast, adjust=False).mean()
         ema_slow = close.ewm(span=self._regime_ema_slow, adjust=False).mean()
 
-        # Look-ahead fix: используем последнюю закрытую 4H свечу (iloc[-2])
-        current_fast = float(ema_fast.iloc[-2])
-        current_slow = float(ema_slow.iloc[-2])
+        # Look-ahead fix: используем последнюю закрытую 4H свечу (iloc[-2]), если есть хотя бы 2 свечи
+        idx = -2 if len(df_4h) >= 2 else -1
+        current_fast = float(ema_fast.iloc[idx])
+        current_slow = float(ema_slow.iloc[idx])
 
         if current_slow == 0:
             return "SIDEWAYS"

@@ -60,10 +60,10 @@ class IndicatorsCalculator:
         pprev = len(df) - 3
 
         result = {
-            "price": float(close.iloc[last]),
+            "price": float(close.iloc[last]) if not pd.isna(close.iloc[last]) else 0.0,
             "rsi": float(rsi.iloc[last]) if last > self._rsi_window else 50.0,
             "atr": float(atr.iloc[last]) if not pd.isna(atr.iloc[last]) else 0.0,
-            "atr_pct": float(atr.iloc[last] / close.iloc[last] * 100) if atr.iloc[last] > 0 else 0.0,
+            "atr_pct": float(atr.iloc[last] / close.iloc[last] * 100) if (not pd.isna(atr.iloc[last]) and atr.iloc[last] > 0 and not pd.isna(close.iloc[last]) and close.iloc[last] > 0) else 0.0,
             "ema_fast": float(ema_fast.iloc[last]) if not pd.isna(ema_fast.iloc[last]) else 0.0,
             "ema_slow": float(ema_slow.iloc[last]) if not pd.isna(ema_slow.iloc[last]) else 0.0,
             "ema_fast_prev": float(ema_fast.iloc[prev]) if (len(df) > 1 and not pd.isna(ema_fast.iloc[prev])) else 0.0,
