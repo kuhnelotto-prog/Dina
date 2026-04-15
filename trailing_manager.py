@@ -14,17 +14,9 @@ import logging
 from typing import Optional, Dict
 
 import event_logger
+from config import TRAILING_STAGES  # единый источник правды
 
 logger = logging.getLogger(__name__)
-
-
-# Конфигурация этапов трейлинга (в единицах ATR)
-TRAILING_STAGES = [
-    {"stage": 1, "activation_atr": 0.5, "sl_atr": 0.0,  "partial_close_pct": 0.0,  "description": "breakeven"},
-    {"stage": 2, "activation_atr": 1.0, "sl_atr": 0.5,  "partial_close_pct": 0.25, "description": "close 25%"},
-    {"stage": 3, "activation_atr": 1.5, "sl_atr": 1.0,  "partial_close_pct": 0.25, "description": "close 25%"},
-    {"stage": 4, "activation_atr": 2.0, "sl_atr": None,  "partial_close_pct": 1.0,  "description": "close all"},
-]
 
 
 class TrailingManager:
@@ -56,6 +48,7 @@ class TrailingManager:
             "current_sl": initial_sl,
             "trailing_step": 0,
             "atr_value": atr_value,
+            "remaining_pct": 1.0,  # доля оригинальной позиции
         }
         logger.info(f"TrailingManager: зарегистрирована {symbol} | SL={initial_sl:.4f} ATR={atr_value:.4f}")
 
@@ -156,32 +149,46 @@ class TrailingManager:
                 new_sl = entry_price - atr * sl_atr_offset
             new_step = stage_num
             
-            # Partial close
-            partial_pct = stage_cfg["partial_close_pct"]
-            if partial_pct > 0 and self.executor:
+            # Partial close — partial_close_pct указывает долю ОРИГИНАЛЬНОЙ позиции
+            # executor.partial_close(pct=) ожидает долю от ТЕКУЩЕГО остатка
+            # Поэтому пересчитываем: pct_of_current = partial_close_pct / remaining_pct
+            partial_pct = stage_cfg["partial_close_pct"]  # доля от оригинала
+            remaining = state.get("remaining_pct", 1.0)
+            if partial_pct > 0 and self.executor and remaining > 0:
+                # Шаг 4 = close all (1.0 от оригинала) — обрабатывается выше
+                if stage_num == 4:
+                    pct_of_current = 1.0
+                else:
+                    # Конвертируем: 25% от оригинала при remaining=75% → 25/75 = 33.3% от текущего
+                    pct_of_current = partial_pct / remaining
+                    pct_of_current = min(pct_of_current, 1.0)  # safety clamp
                 try:
-                    await self.executor.partial_close(symbol, side_lower, pct=partial_pct)
+                    await self.executor.partial_close(symbol, side_lower, pct=pct_of_current)
                 except Exception as e:
                     logger.error(f"TrailingManager: partial_close failed {symbol}: {e}")
+                # Обновляем remaining_pct
+                state["remaining_pct"] = remaining - partial_pct
             
             # Логирование
             desc = stage_cfg["description"]
             if partial_pct > 0:
+                new_remaining = state.get("remaining_pct", remaining - partial_pct)
                 logger.info(
-                    f"💰 {symbol} Шаг {stage_num}: {desc} ({partial_pct*100:.0f}%), "
+                    f"💰 {symbol} Шаг {stage_num}: {desc} ({partial_pct*100:.0f}% of original, "
+                    f"pct_of_current={pct_of_current*100:.1f}%), "
+                    f"remaining={new_remaining*100:.0f}%, "
                     f"стоп → {new_sl:.4f} (+{sl_atr_offset}×ATR)"
                 )
                 if self.bot:
                     await self.bot._send(
                         f"💰 {symbol} Шаг {stage_num}: {desc}\n"
-                        f"Стоп: {new_sl:.4f} (+{sl_atr_offset}×ATR)"
+                        f"Стоп: {new_sl:.4f} (+{sl_atr_offset}×ATR)\n"
+                        f"Остаток: {new_remaining*100:.0f}%"
                     )
                 event_logger.partial_close(symbol, pct=int(partial_pct*100), price=current_price, step=stage_num)
                 # Синхронизируем risk_manager
                 if self.risk_manager:
-                    remaining = {2: 0.75, 3: 0.50}  # после шага 2: 75%, после шага 3: 50% (75%-25%=50%)
-                    if stage_num in remaining:
-                        self.risk_manager.update_position_size(symbol, remaining_pct=remaining[stage_num])
+                    self.risk_manager.update_position_size(symbol, remaining_pct=state.get("remaining_pct", 1.0))
             else:
                 logger.info(
                     f"🔒 {symbol} Шаг {stage_num}: {desc}, стоп → {new_sl:.4f}"

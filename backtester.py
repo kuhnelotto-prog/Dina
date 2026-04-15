@@ -17,6 +17,7 @@ import requests
 import time
 
 from indicators_calc import IndicatorsCalculator
+from config import TRAILING_STAGES  # единый источник правды (shared with trailing_manager.py)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -142,19 +143,16 @@ class BacktestPosition:
 
     def _apply_trailing_4step(self, close):
         """
-        4-step trailing synced with trailing_manager.py TRAILING_STAGES:
-          Step 1 (+0.5×ATR): SL → breakeven
-          Step 2 (+1.0×ATR): close 25%, SL → entry + 0.5×ATR
-          Step 3 (+1.5×ATR): close 25%, SL → entry + 1.0×ATR
-          Step 4 (+2.0×ATR): close everything (hard TP)
-        Uses ATR for activation (not R), matching live system exactly.
+        4-step trailing synced with config.TRAILING_STAGES (single source of truth).
+        partial_close_pct = доля ОРИГИНАЛЬНОЙ позиции (как в trailing_manager.py).
+        Система пересчитывает в долю от текущего остатка автоматически.
         Returns True if position fully closed at step 4.
         """
         ATR = self.entry_atr
         if ATR <= 0:
             return False
 
-        # Calculate price movement in ATR units (NOT R-multiples)
+        # Calculate price movement in ATR units
         if self.side == "long":
             atr_move = (close - self.entry_price) / ATR
         else:
@@ -162,44 +160,51 @@ class BacktestPosition:
 
         step = self.trailing_step
 
-        # Step 1 — breakeven (+0.5×ATR)
-        if step < 1 and atr_move >= 0.5:
-            new_sl = self.entry_price
-            self.sl_price = new_sl
-            self.trailing_step = 1
-            logger.debug(f"  TSL step 1: {self.symbol} SL->breakeven {new_sl:.2f}")
+        for stage_cfg in TRAILING_STAGES:
+            stage_num = stage_cfg["stage"]
+            activation = stage_cfg["activation_atr"]
 
-        # Step 2 — close 25%, SL to +0.5×ATR
-        elif step < 2 and atr_move >= 1.0:
+            if step >= stage_num:
+                continue  # already passed this stage
+            if atr_move < activation:
+                break  # not yet reached this level
+
+            # === Stage activated ===
+
+            if stage_num == 4:
+                # Step 4 — close everything
+                self.trailing_step = 4
+                tp_price = close * (1 - SLIPPAGE_PCT) if self.side == "long" else close * (1 + SLIPPAGE_PCT)
+                self._close(tp_price, "TP_2ATR")
+                logger.debug(f"  TSL step 4: {self.symbol} full close at +{activation}×ATR")
+                return True
+
+            # Compute new SL
+            sl_atr_offset = stage_cfg["sl_atr"]
             if self.side == "long":
-                new_sl = self.entry_price + ATR * 0.5
+                new_sl = self.entry_price + ATR * sl_atr_offset
             else:
-                new_sl = self.entry_price - ATR * 0.5
+                new_sl = self.entry_price - ATR * sl_atr_offset
             self.sl_price = new_sl
-            self.trailing_step = 2
-            # Partial close 25% of current remaining
-            self._partial_close(0.25, close)
-            logger.debug(f"  TSL step 2: {self.symbol} close 25%, SL->{new_sl:.2f}")
+            self.trailing_step = stage_num
 
-        # Step 3 — close another 25%, SL to +1.0×ATR
-        elif step < 3 and atr_move >= 1.5:
-            if self.side == "long":
-                new_sl = self.entry_price + ATR * 1.0
-            else:
-                new_sl = self.entry_price - ATR * 1.0
-            self.sl_price = new_sl
-            self.trailing_step = 3
-            # Partial close 25% of current remaining (= 1/3 of what's left after step 2)
-            self._partial_close(1/3, close)
-            logger.debug(f"  TSL step 3: {self.symbol} close 25%, SL->{new_sl:.2f}")
-
-        # Step 4 — close everything at +2.0×ATR (matches trailing_manager.py)
-        elif step < 4 and atr_move >= 2.0:
-            self.trailing_step = 4
-            tp_price = close * (1 - SLIPPAGE_PCT) if self.side == "long" else close * (1 + SLIPPAGE_PCT)
-            self._close(tp_price, "TP_2ATR")
-            logger.debug(f"  TSL step 4: {self.symbol} full close at +2.0×ATR")
-            return True
+            # Partial close — partial_close_pct = доля от ОРИГИНАЛА
+            # _partial_close(pct_of_current) = доля от текущего остатка
+            # Конвертируем: pct_of_current = partial_close_pct / remaining_pct
+            partial_pct = stage_cfg["partial_close_pct"]  # доля от оригинала
+            if partial_pct > 0 and self.remaining_pct > 0:
+                pct_of_current = partial_pct / self.remaining_pct
+                pct_of_current = min(pct_of_current, 1.0)  # safety clamp
+                self._partial_close(pct_of_current, close)
+                desc = stage_cfg["description"]
+                logger.debug(
+                    f"  TSL step {stage_num}: {self.symbol} {desc} "
+                    f"(pct_of_current={pct_of_current*100:.1f}%, remaining={self.remaining_pct*100:.0f}%), "
+                    f"SL->{new_sl:.2f}"
+                )
+            elif sl_atr_offset == 0.0:
+                # Step 1: breakeven, no partial close
+                logger.debug(f"  TSL step {stage_num}: {self.symbol} SL->breakeven {new_sl:.2f}")
 
         return False
 

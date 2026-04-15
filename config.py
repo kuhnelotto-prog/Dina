@@ -106,6 +106,18 @@ class RiskConfig:
 # Trailing
 # ============================================================
 
+# ── 4-step ATR Trailing Stages (единый источник правды) ──
+# Используется в: trailing_manager.py, backtester.py
+# partial_close_pct = доля ОРИГИНАЛЬНОЙ позиции для закрытия (не текущего остатка!)
+# Система автоматически пересчитывает в долю от текущего остатка.
+TRAILING_STAGES = [
+    {"stage": 1, "activation_atr": 0.5, "sl_atr": 0.0,  "partial_close_pct": 0.0,  "description": "breakeven"},
+    {"stage": 2, "activation_atr": 1.0, "sl_atr": 0.5,  "partial_close_pct": 0.25, "description": "close 25%"},
+    {"stage": 3, "activation_atr": 1.5, "sl_atr": 1.0,  "partial_close_pct": 0.25, "description": "close 25%"},
+    {"stage": 4, "activation_atr": 2.0, "sl_atr": None,  "partial_close_pct": 1.0,  "description": "close all"},
+]
+
+
 @dataclass
 class TrailingConfig:
     activation_atr: float = field(default_factory=lambda: _float("TRAILING_ACTIVATION_ATR", 0.5))
