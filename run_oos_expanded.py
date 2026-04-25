@@ -18,8 +18,7 @@ logging.basicConfig(level=logging.WARNING)
 
 from backtester import Backtester
 
-SYMBOLS = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "LINKUSDT", "SOLUSDT",
-           "BNBUSDT", "ADAUSDT", "AVAXUSDT", "ARBUSDT", "DOTUSDT"]
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "LINKUSDT", "SOLUSDT", "AVAXUSDT", "ADAUSDT", "SUIUSDT"]
 
 OOS_START = datetime(2025, 10, 12)
 OOS_END = datetime(2026, 1, 12)
@@ -28,14 +27,14 @@ OOS_END = datetime(2026, 1, 12)
 TRAIN = {
     "BTCUSDT":  {"trades": 10, "wr": 40.0, "pnl": 0.824, "sharpe": 2.81},
     "ETHUSDT":  {"trades": 8,  "wr": 25.0, "pnl": -0.086, "sharpe": -0.35},
+    "BNBUSDT":  {"trades": 11, "wr": 45.5, "pnl": -0.615, "sharpe": -2.35},
     "XRPUSDT":  {"trades": 10, "wr": 30.0, "pnl": -0.276, "sharpe": -0.91},
+    "DOGEUSDT": {"trades": 8,  "wr": 37.5, "pnl": -0.320, "sharpe": -0.88},
     "LINKUSDT": {"trades": 12, "wr": 33.3, "pnl": -1.028, "sharpe": -2.23},
     "SOLUSDT":  {"trades": 9,  "wr": 22.2, "pnl": 0.552, "sharpe": 1.15},
-    "BNBUSDT":  {"trades": 11, "wr": 45.5, "pnl": -0.615, "sharpe": -2.35},
-    "ADAUSDT":  {"trades": 13, "wr": 23.1, "pnl": -2.076, "sharpe": -4.72},
     "AVAXUSDT": {"trades": 9,  "wr": 11.1, "pnl": -1.637, "sharpe": -6.50},
-    "ARBUSDT":  {"trades": 11, "wr": 63.6, "pnl": 2.656, "sharpe": 4.22},
-    "DOTUSDT":  {"trades": 9,  "wr": 44.4, "pnl": 0.057, "sharpe": 0.14},
+    "ADAUSDT":  {"trades": 13, "wr": 23.1, "pnl": -2.076, "sharpe": -4.72},
+    "SUIUSDT":  {"trades": 7,  "wr": 28.6, "pnl": -0.450, "sharpe": -1.10},
 }
 
 
@@ -141,20 +140,21 @@ for s in SYMBOLS:
     ok = "YES" if pnl > 0 and sh > 0.2 else "marginal" if pnl > 0 else "no"
     print(f"{s:<10} {tr['trades']:>9} {t:>10} {tr['wr']:>7.1f} {wr:>8.1f} {tr['pnl']:>+8.3f} {pnl:>+9.3f} {tr['sharpe']:>10.2f} {sh:>11.2f} {ok:>8}")
 
-# ── ARB Focus ──
+# ── DOGE/SUI Focus (replaced ARB/DOT) ──
 print()
 print("=" * 120)
-print("ARB FOCUS:")
-arb_tr = TRAIN["ARBUSDT"]
-arb_oos = oos_results["ARBUSDT"]
-print(f"  Train: {arb_tr['trades']} trades, WR {arb_tr['wr']}%, PnL {arb_tr['pnl']:+.3f}%, Sharpe {arb_tr['sharpe']:.2f}")
-print(f"  OOS:   {arb_oos['trades']} trades, WR {arb_oos['wr']}%, PnL {arb_oos['pnl']:+.3f}%, Sharpe {arb_oos['sharpe']:.2f}")
-if arb_oos["pnl"] > 0 and arb_oos["sharpe"] > 0.2:
-    print("  >>> ARB OOS: PASS — safe to include in portfolio")
-elif arb_oos["pnl"] > 0:
-    print("  >>> ARB OOS: MARGINAL — profitable but noisy")
-else:
-    print("  >>> ARB OOS: FAIL — do not include")
+print("DOGE/SUI FOCUS (new portfolio coins):")
+for focus_sym in ["DOGEUSDT", "SUIUSDT"]:
+    if focus_sym in oos_results:
+        tr = TRAIN[focus_sym]
+        oos = oos_results[focus_sym]
+        print(f"  {focus_sym}: Train PnL {tr['pnl']:+.3f}% → OOS PnL {oos['pnl']:+.3f}%, Sharpe {oos['sharpe']:.2f}")
+        if oos["pnl"] > 0 and oos["sharpe"] > 0.2:
+            print(f"  >>> {focus_sym} OOS: PASS — safe to include")
+        elif oos["pnl"] > 0:
+            print(f"  >>> {focus_sym} OOS: MARGINAL — profitable but noisy")
+        else:
+            print(f"  >>> {focus_sym} OOS: FAIL — do not include")
 
 # ── ETH/XRP/LINK Diagnosis ──
 print()

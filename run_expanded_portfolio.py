@@ -20,8 +20,7 @@ logging.basicConfig(level=logging.WARNING)
 
 from backtester import Backtester
 
-SYMBOLS = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "LINKUSDT", "SOLUSDT",
-           "BNBUSDT", "ADAUSDT", "AVAXUSDT", "ARBUSDT", "DOTUSDT"]
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "LINKUSDT", "SOLUSDT", "AVAXUSDT", "ADAUSDT", "SUIUSDT"]
 
 TRAIN_START = datetime(2026, 1, 12)
 TRAIN_END = datetime(2026, 4, 12)

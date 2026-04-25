@@ -9,6 +9,7 @@ Uses a simple strategy: buy when price drops 2% from recent high.
 
 import asyncio
 import logging
+import os
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
@@ -53,17 +54,31 @@ LEVERAGE = 10             # плечо (как в живой системе)
 SLIPPAGE_PCT = 0.0005     # 0.05% slippage на market ордера
 FUNDING_RATE = 0.0001     # 0.01% каждые 8 часов
 FUNDING_INTERVAL_H = 8   # интервал funding в часах
+
+# ── P34: Asymmetric LONG/SHORT parameters ──
+SL_ATR_MULT_LONG = 6.6    # wider SL for longs (survive corrections in staircase pattern)
+SL_ATR_MULT_SHORT = 1.5  # standard SL for shorts
+TSL_ATR_LONG_STEP0 = 0   # disabled: no trailing before TP1 for LONG (give room to breathe)
+TSL_ATR_LONG_AFTER_TP1 = 2.0  # softer trailing after TP1 for LONG
 DAILY_LOSS_LIMIT_PCT = 5.0  # 5% дневной лимит потерь
 MAX_PORTFOLIO_VAR_PCT = 15.0  # максимум 15% портфеля под риском (VaR)
 MAX_SHORT_OPEN = 3           # не более 3 шортов одновременно
 MAX_OPEN_POSITIONS = 3       # максимум 3 позиции одновременно
-SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "SOLUSDT", "LINKUSDT", "DOGEUSDT", "AVAXUSDT", "ADAUSDT", "SUIUSDT"]
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "SOLUSDT", "LINKUSDT", "DOGEUSDT", "AVAXUSDT", "ADAUSDT", "SUIUSDT", "APEUSDT", "ARBUSDT"]
 ATR_CRISIS_MULTIPLIER = 3.0   # ATR > 3× среднего → CRISIS
 ATR_VOLATILE_MULTIPLIER = 2.0  # ATR > 2× среднего → VOLATILE
 VOLATILE_SIZE_REDUCTION = 0.5  # при VOLATILE: размер позиции × 0.5
 POSITION_TIMEOUT_H = 96        # максимум 96 часов в позиции
 MIN_EXPECTED_PNL_PCT = -0.5   # закрыть если PnL < -0.5% после 48ч
-MIN_PNL_CHECK_H = 48          # проверять PnL после 48ч
+MIN_PNL_CHECK_H = 48          # проверять PnL после 48ч (SHORT)
+# P36: LONG-specific MIN_PNL parameters (overridable from scripts)
+MIN_PNL_CHECK_H_LONG = 24     # P38 final: проверять PnL после 24h для LONG
+MIN_EXPECTED_PNL_PCT_LONG = -0.5  # закрыть LONG если PnL < X% после MIN_PNL_CHECK_H_LONG
+MIN_PNL_LONG_ENABLED = False   # DISABLED: MIN_PNL_TIMEOUT kills good trades before TSL can work
+MIN_PNL_SHORT_ENABLED = False  # DISABLED: same for SHORT — let TSL do its job
+# P37: CVD (Cumulative Volume Delta) as LONG-only signal booster
+CVD_WEIGHT_LONG = 0.5         # P38 final: weight of CVD signal in composite (LONG only)
+CVD_LOOKBACK = 20             # compare CVD to rolling mean over N candles
 START_DATE = datetime.now(timezone.utc) - timedelta(days=90)
 END_DATE = datetime.now(timezone.utc) - timedelta(minutes=5)
 
@@ -104,6 +119,9 @@ class BacktestPosition:
         self.partial_pnl_usd = 0.0     # accumulated PnL from partial closes
         self.total_funding = 0.0      # accumulated funding cost
         self._funding_hours_accrued = 0  # сколько 8-часовых funding-интервалов уже начислено
+        self.composite_score = 0.0     # P8: entry composite score
+        self.signals_fired = {}        # P38: raw signal components at entry
+        self.peak_price = entry_price  # P8: track peak for TSL from peak
 
     def update(self, current_price, high=None, low=None, timestamp=None):
         """
@@ -143,70 +161,99 @@ class BacktestPosition:
 
     def _apply_trailing_4step(self, close):
         """
-        4-step trailing synced with config.TRAILING_STAGES (single source of truth).
-        partial_close_pct = доля ОРИГИНАЛЬНОЙ позиции (как в trailing_manager.py).
-        Система пересчитывает в долю от текущего остатка автоматически.
-        Returns True if position fully closed at step 4.
+        P8+P34 exit logic — asymmetric LONG/SHORT.
+        
+        LONG (P34):
+          - No trailing before TP1 (Step 0 disabled)
+          - TP1 at +1 ATR: close 30%, SL to entry - TSL_ATR_LONG_AFTER_TP1*ATR
+          - TP2 at +2 ATR: close 30%, TSL at TSL_ATR_LONG_AFTER_TP1*ATR from peak
+          - After TP2: TSL continues from peak at TSL_ATR_LONG_AFTER_TP1*ATR
+        
+        SHORT (P8 standard):
+          - TP1 at +1 ATR: close 30%, SL to breakeven + 0.5 ATR
+          - TP2 at +2 ATR: close 30%, TSL at 1.5 ATR from peak
+          - After TP2: TSL continues from peak at 1.5 ATR
         """
         ATR = self.entry_atr
         if ATR <= 0:
             return False
 
-        # Calculate price movement in ATR units
+        # Track peak price for TSL from peak
         if self.side == "long":
+            if close > self.peak_price:
+                self.peak_price = close
             atr_move = (close - self.entry_price) / ATR
         else:
+            if close < self.peak_price:
+                self.peak_price = close
             atr_move = (self.entry_price - close) / ATR
 
         step = self.trailing_step
 
-        for stage_cfg in TRAILING_STAGES:
-            stage_num = stage_cfg["stage"]
-            activation = stage_cfg["activation_atr"]
-
-            if step >= stage_num:
-                continue  # already passed this stage
-            if atr_move < activation:
-                break  # not yet reached this level
-
-            # === Stage activated ===
-
-            if stage_num == 4:
-                # Step 4 — close everything
-                self.trailing_step = 4
-                tp_price = close * (1 - SLIPPAGE_PCT) if self.side == "long" else close * (1 + SLIPPAGE_PCT)
-                self._close(tp_price, "TP_2ATR")
-                logger.debug(f"  TSL step 4: {self.symbol} full close at +{activation}×ATR")
-                return True
-
-            # Compute new SL
-            sl_atr_offset = stage_cfg["sl_atr"]
-            if self.side == "long":
-                new_sl = self.entry_price + ATR * sl_atr_offset
-            else:
-                new_sl = self.entry_price - ATR * sl_atr_offset
-            self.sl_price = new_sl
-            self.trailing_step = stage_num
-
-            # Partial close — partial_close_pct = доля от ОРИГИНАЛА
-            # _partial_close(pct_of_current) = доля от текущего остатка
-            # Конвертируем: pct_of_current = partial_close_pct / remaining_pct
-            partial_pct = stage_cfg["partial_close_pct"]  # доля от оригинала
-            if partial_pct > 0 and self.remaining_pct > 0:
-                pct_of_current = partial_pct / self.remaining_pct
-                pct_of_current = min(pct_of_current, 1.0)  # safety clamp
-                self._partial_close(pct_of_current, close)
-                desc = stage_cfg["description"]
-                logger.debug(
-                    f"  TSL step {stage_num}: {self.symbol} {desc} "
-                    f"(pct_of_current={pct_of_current*100:.1f}%, remaining={self.remaining_pct*100:.0f}%), "
-                    f"SL->{new_sl:.2f}"
-                )
-            elif sl_atr_offset == 0.0:
-                # Step 1: breakeven, no partial close
-                logger.debug(f"  TSL step {stage_num}: {self.symbol} SL->breakeven {new_sl:.2f}")
-
-        return False
+        # ══════════════════════════════════════
+        # LONG positions — P34 asymmetric logic
+        # ══════════════════════════════════════
+        if self.side == "long":
+            # Step 0: DISABLED for LONG (P34) — no trailing before TP1
+            # (skip breakeven at +0.5 ATR)
+            
+            # TP1 at +1 ATR: close 30%, SL to entry - TSL_ATR_LONG_AFTER_TP1*ATR
+            if step < 1 and atr_move >= 1.0:
+                self.trailing_step = 1
+                new_sl = self.entry_price - TSL_ATR_LONG_AFTER_TP1 * ATR
+                # Only move SL forward, never backward
+                if new_sl > self.sl_price:
+                    self.sl_price = new_sl
+                self._partial_close(0.30, close)
+                logger.debug(f"  TP1 (LONG): {self.symbol} close 30% at +1 ATR, SL->entry-{TSL_ATR_LONG_AFTER_TP1}ATR={new_sl:.2f}")
+            
+            # TP2 at +2 ATR: close 30%, TSL from peak at TSL_ATR_LONG_AFTER_TP1*ATR
+            if step < 2 and atr_move >= 2.0:
+                self.trailing_step = 2
+                tp_price = close * (1 - SLIPPAGE_PCT)
+                self._partial_close(0.30 / max(self.remaining_pct, 0.01), close)  # close 30% of original = fraction of remaining
+                new_sl = self.peak_price - TSL_ATR_LONG_AFTER_TP1 * ATR
+                if new_sl > self.sl_price:
+                    self.sl_price = new_sl
+                logger.debug(f"  TP2 (LONG): {self.symbol} close 30% at +2 ATR, TSL from peak={self.peak_price:.2f}")
+            
+            # After TP2 (or TP1): TSL from peak
+            if self.trailing_step >= 1:
+                tsl = self.peak_price - TSL_ATR_LONG_AFTER_TP1 * ATR
+                if tsl > self.sl_price:
+                    self.sl_price = tsl
+            
+            return False
+        
+        # ══════════════════════════════════════
+        # SHORT positions — P8 standard logic
+        # ══════════════════════════════════════
+        else:
+            # TP1 at +1 ATR: close 30%, SL to breakeven + 0.5 ATR
+            if step < 1 and atr_move >= 1.0:
+                self.trailing_step = 1
+                new_sl = self.entry_price + 0.5 * ATR
+                if new_sl < self.sl_price:
+                    self.sl_price = new_sl
+                self._partial_close(0.30, close)
+                logger.debug(f"  TP1 (SHORT): {self.symbol} close 30% at +1 ATR, SL->breakeven+0.5ATR={new_sl:.2f}")
+            
+            # TP2 at +2 ATR: close 30%, TSL from peak at 1.5 ATR
+            if step < 2 and atr_move >= 2.0:
+                self.trailing_step = 2
+                self._partial_close(0.30 / max(self.remaining_pct, 0.01), close)
+                new_sl = self.peak_price + 1.5 * ATR
+                if new_sl < self.sl_price:
+                    self.sl_price = new_sl
+                logger.debug(f"  TP2 (SHORT): {self.symbol} close 30% at +2 ATR, TSL from peak={self.peak_price:.2f}")
+            
+            # After TP2 (or TP1): TSL from peak
+            if self.trailing_step >= 1:
+                tsl = self.peak_price + 1.5 * ATR
+                if tsl < self.sl_price:
+                    self.sl_price = tsl
+            
+            return False
 
     def _partial_close(self, pct, price):
         """Close pct of remaining position, book partial PnL (incl. commission + slippage)."""
@@ -334,6 +381,25 @@ class BacktestResult:
                 reason_pnl = sum(t.pnl_usd for t in self.trades if getattr(t, 'exit_reason', '') == reason)
                 print(f"  {reason:20s}: {count:3d} ({pct:5.1f}%) | PnL: ${reason_pnl:+,.2f}")
 
+        # LONG vs SHORT breakdown
+        if self.total_trades > 0:
+            long_trades = [t for t in self.trades if t.side == "long"]
+            short_trades = [t for t in self.trades if t.side == "short"]
+            print(f"\n--- LONG vs SHORT ---")
+            for label, trades in [("LONG", long_trades), ("SHORT", short_trades)]:
+                if not trades:
+                    print(f"  {label}: no trades")
+                    continue
+                n = len(trades)
+                wins = sum(1 for t in trades if t.pnl_usd > 0)
+                wr = wins / n * 100
+                pnl = sum(t.pnl_usd for t in trades)
+                sl_t = sum(1 for t in trades if getattr(t, 'exit_reason', '') == 'SL')
+                tsl_t = sum(1 for t in trades if getattr(t, 'exit_reason', '') == 'TSL')
+                to_t = sum(1 for t in trades if 'TIMEOUT' in getattr(t, 'exit_reason', ''))
+                mp_t = sum(1 for t in trades if 'MIN_PNL' in getattr(t, 'exit_reason', ''))
+                print(f"  {label}: {n} trades | WR={wr:.1f}% | PnL=${pnl:+,.2f} | SL={sl_t} TSL={tsl_t} TIMEOUT={to_t} MIN_PNL={mp_t}")
+
         print("="*60)
 
 
@@ -373,7 +439,7 @@ class Backtester:
         price_bases = {"BTCUSDT": 50000, "ETHUSDT": 3000, "BNBUSDT": 600,
                        "XRPUSDT": 0.6, "SOLUSDT": 100, "LINKUSDT": 15,
                        "DOGEUSDT": 0.1, "AVAXUSDT": 30, "ADAUSDT": 0.45,
-                       "SUIUSDT": 1.5}
+                       "SUIUSDT": 1.5, "APEUSDT": 5.0, "ARBUSDT": 1.0}
         base = price_bases.get(symbol, 100)
         # Proportional random walk — never goes negative
         returns = np.random.randn(len(dates)) * 0.02  # 2% std per candle
@@ -565,6 +631,21 @@ class Backtester:
         else:
             logger.info("BTC 1D EMA50 master filter DISABLED (no 1D data)")
 
+        # ── P37: Precompute CVD (Cumulative Volume Delta) per symbol ──
+        # CVD per candle = taker_buy_vol - taker_sell_vol = 2*taker_buy_vol - total_vol
+        # Requires 'taker_buy_vol' column in the DataFrame (field 9 from Binance klines API)
+        cvd_data = {}  # symbol -> Series of CVD values
+        cvd_mean_data = {}  # symbol -> Series of rolling mean CVD
+        for sym in active_symbols:
+            sym_df = dfs.get(sym)
+            if sym_df is not None and 'taker_buy_vol' in sym_df.columns:
+                cvd = 2.0 * sym_df['taker_buy_vol'] - sym_df['volume']
+                cvd_data[sym] = cvd
+                cvd_mean_data[sym] = cvd.rolling(CVD_LOOKBACK, min_periods=1).mean()
+            else:
+                cvd_data[sym] = None
+                cvd_mean_data[sym] = None
+
         # Master timeline: use BTCUSDT if available, otherwise first symbol
         master_sym = "BTCUSDT" if "BTCUSDT" in dfs else active_symbols[0] if active_symbols else None
         if master_sym is None or master_sym not in dfs:
@@ -573,6 +654,12 @@ class Backtester:
         master_df = dfs[master_sym]
 
         logger.info(f"Multi-symbol backtest: {active_symbols} | master timeline: {master_sym}")
+
+        # ── Signal counting for diagnostics ──
+        signal_stats = {"long_generated": 0, "long_filtered_adx": 0, "long_filtered_threshold": 0, 
+                        "long_filtered_rsi": 0, "long_filtered_btc1d": 0, "long_opened": 0,
+                        "short_generated": 0, "short_filtered_adx": 0, "short_filtered_threshold": 0,
+                        "short_filtered_rsi": 0, "short_filtered_btc1d": 0, "short_filtered_maxshort": 0, "short_opened": 0}
 
         # ── Daily loss limit tracking ──
         current_day = None
@@ -644,16 +731,19 @@ class Backtester:
                     entry_price = candle_open * (1 + SLIPPAGE_PCT)
                 else:
                     entry_price = candle_open * (1 - SLIPPAGE_PCT)
+                # P34: asymmetric SL multiplier
                 if sig["side"] == "long":
-                    sl_price = entry_price * (1 - sig["sl_pct"])
+                    actual_sl_pct = SL_ATR_MULT_LONG * sig["sl_pct"]
+                    sl_price = entry_price * (1 - actual_sl_pct)
                     tp_price = entry_price * (1 + sig["tp_pct"])
                 else:
-                    sl_price = entry_price * (1 + sig["sl_pct"])
+                    actual_sl_pct = SL_ATR_MULT_SHORT * sig["sl_pct"]
+                    sl_price = entry_price * (1 + actual_sl_pct)
                     tp_price = entry_price * (1 - sig["tp_pct"])
 
                 # PositionSizer logic (matches live system)
                 risk_usd = result.final_balance * BASE_RISK_PCT / 100
-                notional_usd = risk_usd / sig["sl_pct"]
+                notional_usd = risk_usd / actual_sl_pct  # P34 fix: use actual SL (with multiplier)
                 # Volatile regime: reduce position size (bug 12)
                 if market_regime == "VOLATILE":
                     notional_usd *= VOLATILE_SIZE_REDUCTION
@@ -668,6 +758,8 @@ class Backtester:
                     timestamp=timestamp,
                     entry_atr=sig.get("atr", 0.0)  # pass ATR at entry for trailing (synced with live system)
                 )
+                position.composite_score = sig.get("composite", 0.0)  # P8: store entry signal quality
+                position.signals_fired = sig.get("signals_fired", {})  # P38: store raw signal components
                 open_positions[sym] = position
                 logger.info(f"Opened {sig['side'].upper()}: {sym} | Price: {entry_price:.2f} | Score: {sig['composite']:.3f}")
 
@@ -709,20 +801,25 @@ class Backtester:
                     result.add_trade(pos)
                     continue
 
-                # Min PnL check after MIN_PNL_CHECK_H hours
-                if pos_age_h >= MIN_PNL_CHECK_H:
-                    current_pnl_pct = (candle_close - pos.entry_price) / pos.entry_price * 100
-                    if pos.side == "short":
-                        current_pnl_pct = -current_pnl_pct
-                    if current_pnl_pct < MIN_EXPECTED_PNL_PCT:
-                        if pos.side == "long":
+                # Min PnL check — LONG uses separate parameters (P36)
+                if pos.side == "long" and MIN_PNL_LONG_ENABLED:
+                    if pos_age_h >= MIN_PNL_CHECK_H_LONG:
+                        current_pnl_pct = (candle_close - pos.entry_price) / pos.entry_price * 100
+                        if current_pnl_pct < MIN_EXPECTED_PNL_PCT_LONG:
                             close_price = candle_close * (1 - SLIPPAGE_PCT)
-                        else:
+                            pos._close(close_price, "MIN_PNL_TIMEOUT", timestamp=timestamp)
+                            closed_syms.append(sym)
+                            result.add_trade(pos)
+                            continue
+                elif pos.side == "short" and MIN_PNL_SHORT_ENABLED:
+                    if pos_age_h >= MIN_PNL_CHECK_H:
+                        current_pnl_pct = -((candle_close - pos.entry_price) / pos.entry_price * 100)
+                        if current_pnl_pct < MIN_EXPECTED_PNL_PCT:
                             close_price = candle_close * (1 + SLIPPAGE_PCT)
-                        pos._close(close_price, "MIN_PNL_TIMEOUT", timestamp=timestamp)
-                        closed_syms.append(sym)
-                        result.add_trade(pos)
-                        continue
+                            pos._close(close_price, "MIN_PNL_TIMEOUT", timestamp=timestamp)
+                            closed_syms.append(sym)
+                            result.add_trade(pos)
+                            continue
 
             for sym in closed_syms:
                 if sym in open_positions:
@@ -775,10 +872,12 @@ class Backtester:
                 adx_prev = indicators.get("adx_prev", 0.0)
                 adx_ok, _ = adx_filter.check(adx_val, adx_prev)
                 if not adx_ok:
+                    signal_stats["long_filtered_adx"] += 1 if composite_long > threshold_long else 0
+                    signal_stats["short_filtered_adx"] += 1 if composite < -threshold_short else 0
                     continue
 
-                # Calculate composite score
-                composite = self._compute_composite(indicators, weights)
+                # Calculate composite score + signals_fired
+                composite, signals_dict = self._compute_composite(indicators, weights)
 
                 # Determine BTC regime for dynamic thresholds
                 if btc_ema50 is not None:
@@ -820,21 +919,38 @@ class Backtester:
                 atr_pct = indicators.get("atr_pct", 0)
                 atr_value = indicators.get("atr", 0)  # absolute ATR for trailing
                 if atr_pct > 0.1:
-                    sl_pct = 1.5 * atr_pct / 100
-                    tp_pct = 2.0 * atr_pct / 100  # synced with strategist_client (was 3.0)
+                    sl_pct_base = atr_pct / 100  # 1 ATR as fraction of price
                 else:
-                    sl_pct = 0.03
-                    tp_pct = 0.04  # proportional: 2.0/1.5 × 3% = 4%
+                    sl_pct_base = 0.02  # fallback: 2% per ATR
+                
+                # P34: asymmetric SL — will be computed at entry time
+                # Store base for per-side calculation
+                sl_pct = sl_pct_base  # placeholder, overridden at entry
+                tp_pct = 2.0 * atr_pct / 100 if atr_pct > 0.1 else 0.04
+
+                # ── P37: CVD boost for LONG signals only ──
+                cvd_score_long = 0.0
+                if cvd_data.get(sym) is not None:
+                    try:
+                        cvd_val = cvd_data[sym].iloc[sym_idx]
+                        cvd_mean_val = cvd_mean_data[sym].iloc[sym_idx]
+                        if not pd.isna(cvd_val) and not pd.isna(cvd_mean_val) and cvd_val > 0 and cvd_val > cvd_mean_val:
+                            cvd_score_long = CVD_WEIGHT_LONG
+                    except Exception:
+                        pass
+                composite_long = composite + cvd_score_long if cvd_score_long > 0 else composite
 
                 # ── LONG signal ──
-                if composite > threshold_long and is_bullish and rsi < 70 and btc_1d_allows_long:
-                    pending_signals[sym] = {"side": "long", "sl_pct": sl_pct, "tp_pct": tp_pct, "composite": composite, "atr": atr_value}
+                if composite_long > threshold_long and is_bullish and rsi < 70 and btc_1d_allows_long:
+                    signal_stats["long_generated"] += 1
+                    pending_signals[sym] = {"side": "long", "sl_pct": sl_pct, "tp_pct": tp_pct, "composite": composite_long, "atr": atr_value, "signals_fired": signals_dict}
 
                 # ── SHORT signal (with short limit check) ──
                 elif composite < -threshold_short and not is_bullish and rsi > 30 and btc_1d_allows_short:
+                    signal_stats["short_generated"] += 1
                     open_shorts = sum(1 for p in open_positions.values() if p.side == "short")
                     if open_shorts < MAX_SHORT_OPEN:
-                        pending_signals[sym] = {"side": "short", "sl_pct": sl_pct, "tp_pct": tp_pct, "composite": composite, "atr": atr_value}
+                        pending_signals[sym] = {"side": "short", "sl_pct": sl_pct, "tp_pct": tp_pct, "composite": composite, "atr": atr_value, "signals_fired": signals_dict}
 
         # ── END_OF_BACKTEST: close all remaining positions ──
         for sym, position in list(open_positions.items()):
@@ -853,10 +969,20 @@ class Backtester:
             position._close(close_price, "END_OF_BACKTEST", timestamp=last_timestamp)
             result.add_trade(position)
 
+        # Print signal diagnostics
+        print(f"\n--- SIGNAL DIAGNOSTICS ---")
+        print(f"  LONG:  generated={signal_stats['long_generated']} | ADX_filtered={signal_stats['long_filtered_adx']}")
+        print(f"  SHORT: generated={signal_stats['short_generated']} | ADX_filtered={signal_stats['short_filtered_adx']}")
+        long_opened = sum(1 for t in result.trades if t.side == "long")
+        short_opened = sum(1 for t in result.trades if t.side == "short")
+        print(f"  LONG opened={long_opened} | SHORT opened={short_opened}")
+        print(f"  Thresholds: LONG_BULL={THRESHOLD_LONG_BULL}, LONG_BEAR={THRESHOLD_LONG_BEAR}, SHORT_BULL={THRESHOLD_SHORT_BULL}, SHORT_BEAR={THRESHOLD_SHORT_BEAR}")
+        print(f"  SL_MULT: LONG={SL_ATR_MULT_LONG}, SHORT={SL_ATR_MULT_SHORT}")
+
         return result
 
     @staticmethod
-    def _compute_composite(indicators: dict, weights: dict) -> float:
+    def _compute_composite(indicators: dict, weights: dict) -> tuple:
         """
         Compute weighted composite score from indicators.
         
@@ -867,8 +993,26 @@ class Backtester:
           Редкие бонусы, усиливают сигнал при совпадении.
         - Volume spike = множитель (не в score).
         
-        Returns score from -1 to 1.
+        Returns (composite_score, signals_fired_dict).
+        signals_fired contains raw component values BEFORE weighting.
         """
+        # ── Collect raw signal components (before weighting) ──
+        signals_fired = {
+            "rsi": 0.0,
+            "macd": 0.0,
+            "bb": 0.0,
+            "trend": 0.0,
+            "ema_cross": 0.0,
+            "engulfing": 0.0,
+            "fvg": 0.0,
+            "sweep": 0.0,
+            "volume_spike": 0.0,
+            "onchain": 0.0,
+            "whale": 0.0,
+            "macro": 0.0,
+            "deepseek": 0.0,
+        }
+
         # ── STATE слой (базовый фон, max = 4.0) ──
         state_score = 0.0
         state_max = 3.3  # synced with signal_builder.py (RSI soft zones + BB squeeze give partial scores)
@@ -876,19 +1020,25 @@ class Backtester:
         # 1. EMA trend state (вес 1.0)
         if indicators["ema_fast"] > indicators["ema_slow"]:
             state_score += 1.0   # бычий тренд
+            signals_fired["trend"] = 1.0
         elif indicators["ema_fast"] < indicators["ema_slow"]:
             state_score -= 1.0   # медвежий тренд
+            signals_fired["trend"] = -1.0
 
         # 2. RSI zone (вес 1.0)
         rsi = indicators.get("rsi", 50)
         if rsi > 70:
             state_score -= 1.0   # перекупленность → медвежий
+            signals_fired["rsi"] = -1.0
         elif rsi < 30:
             state_score += 1.0   # перепроданность → бычий
+            signals_fired["rsi"] = 1.0
         elif rsi > 60:
             state_score -= 0.4   # слабо медвежий
+            signals_fired["rsi"] = -0.4
         elif rsi < 40:
             state_score += 0.4   # слабо бычий
+            signals_fired["rsi"] = 0.4
 
         # 3. MACD histogram (вес 1.0)
         macd = indicators.get("macd", 0)
@@ -896,8 +1046,10 @@ class Backtester:
         macd_hist = macd - macd_signal
         if macd_hist < 0:
             state_score -= 1.0   # медвежий
+            signals_fired["macd"] = -1.0
         elif macd_hist > 0:
             state_score += 1.0   # бычий
+            signals_fired["macd"] = 1.0
 
         # 4. Bollinger position (вес 1.0)
         price = indicators.get("price", 0)
@@ -906,12 +1058,15 @@ class Backtester:
         bb_middle = indicators.get("bb_middle", 0)
         if bb_upper > 0 and price > bb_upper:
             state_score -= 1.0   # перекупленность → медвежий
+            signals_fired["bb"] = -1.0
         elif bb_lower > 0 and price < bb_lower:
             state_score += 1.0   # перепроданность → бычий
+            signals_fired["bb"] = 1.0
         elif bb_middle > 0:
             bb_width = (bb_upper - bb_lower) / bb_middle
             if bb_width < 0.05:
                 state_score += 0.3  # BB squeeze → готовность к движению
+                signals_fired["bb"] = 0.3
 
         # Нормализуем state: [-1, +1]
         state_normalized = state_score / state_max if state_max > 0 else 0.0
@@ -935,26 +1090,34 @@ class Backtester:
         )
         if ema_cross_bull:
             event_score += ema_cross_weight
+            signals_fired["ema_cross"] = 1.0
         elif ema_cross_bear:
             event_score -= ema_cross_weight
+            signals_fired["ema_cross"] = -1.0
 
         # Engulfing
         if indicators.get("engulfing_bull", False):
             event_score += engulfing_weight
+            signals_fired["engulfing"] = 1.0
         elif indicators.get("engulfing_bear", False):
             event_score -= engulfing_weight
+            signals_fired["engulfing"] = -1.0
 
         # FVG
         if indicators.get("fvg_bull", False):
             event_score += fvg_weight
+            signals_fired["fvg"] = 1.0
         elif indicators.get("fvg_bear", False):
             event_score -= fvg_weight
+            signals_fired["fvg"] = -1.0
 
         # Sweep
         if indicators.get("sweep_bull", False):
             event_score += sweep_weight
+            signals_fired["sweep"] = 1.0
         elif indicators.get("sweep_bear", False):
             event_score -= sweep_weight
+            signals_fired["sweep"] = -1.0
 
         # Нормализуем event: [-1, +1]
         event_normalized = event_score / event_max if event_max > 0 else 0.0
@@ -966,9 +1129,15 @@ class Backtester:
         volume_spike_multiplier = weights.get("volume_spike", 1.2)
         if indicators.get("volume_ratio", 1.0) > 1.2:
             composite *= volume_spike_multiplier
+            signals_fired["volume_spike"] = volume_spike_multiplier
 
         # Clamp to [-1, +1]
-        return max(-1.0, min(1.0, composite))
+        composite = max(-1.0, min(1.0, composite))
+        
+        # Round signals_fired values for clarity
+        signals_fired = {k: round(v, 4) for k, v in signals_fired.items()}
+        
+        return composite, signals_fired
 
 
 def fetch_bitget_klines(symbol: str, granularity: str = "4H", limit: int = 1000) -> pd.DataFrame:
@@ -997,6 +1166,140 @@ def fetch_bitget_klines(symbol: str, granularity: str = "4H", limit: int = 1000)
     except Exception as e:
         logger.error(f"Error fetching {symbol}: {e}")
         return None
+
+
+def fetch_binance_klines(symbol: str, interval: str = "4h", days: int = 540) -> pd.DataFrame:
+    """
+    Fetch historical klines from Binance Futures API.
+    Binance provides deeper history (~3300+ bars on 4h for 1.5 years).
+    Paginates backward from now to cover `days` days.
+    """
+    base_url = "https://fapi.binance.com/fapi/v1/klines"
+    
+    candles_per_day = {"1m": 1440, "5m": 288, "15m": 96, "1h": 24, "4h": 6, "1d": 1}
+    total_candles = days * candles_per_day.get(interval, 6)
+    
+    all_candles = []
+    end_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
+    start_ms = int(start_date.timestamp() * 1000)
+    
+    logger.info(f"Fetching {symbol} {interval} from Binance ({days} days, ~{total_candles} candles)")
+    
+    current_end = end_ms
+    iteration = 0
+    max_iterations = 20
+    
+    while current_end > start_ms and iteration < max_iterations:
+        iteration += 1
+        params = {
+            "symbol": symbol,
+            "interval": interval,
+            "limit": 1500,
+            "endTime": current_end,
+        }
+        try:
+            resp = requests.get(base_url, params=params, timeout=30)
+            data = resp.json()
+            if not isinstance(data, list) or len(data) == 0:
+                logger.info(f"Binance: no more data for {symbol} (iteration {iteration})")
+                break
+            
+            for c in data:
+                all_candles.append({
+                    "timestamp": int(c[0]),
+                    "open": float(c[1]),
+                    "high": float(c[2]),
+                    "low": float(c[3]),
+                    "close": float(c[4]),
+                    "volume": float(c[5]),
+                    "taker_buy_vol": float(c[9]) if len(c) > 9 else 0.0,
+                })
+            
+            logger.info(f"Binance {symbol}: {len(data)} candles (iter {iteration}, total {len(all_candles)})")
+            
+            earliest = int(data[0][0])
+            if earliest >= current_end:
+                break
+            current_end = earliest - 1
+            time.sleep(0.2)
+            
+        except Exception as e:
+            logger.error(f"Binance API error for {symbol}: {e}")
+            break
+    
+    if not all_candles:
+        logger.warning(f"No data fetched from Binance for {symbol}")
+        return None
+    
+    # Deduplicate and sort
+    seen = set()
+    unique = []
+    for c in sorted(all_candles, key=lambda x: x["timestamp"]):
+        if c["timestamp"] not in seen:
+            seen.add(c["timestamp"])
+            unique.append(c)
+    
+    df = pd.DataFrame(unique)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+    df = df.sort_values("timestamp").reset_index(drop=True)
+    # Compare tz-naive: strip timezone from start_date for comparison
+    start_date_naive = start_date.replace(tzinfo=None) if hasattr(start_date, 'tzinfo') and start_date.tzinfo else start_date
+    df = df[df["timestamp"] >= pd.Timestamp(start_date_naive)]
+    df.set_index("timestamp", inplace=True)
+    logger.info(f"Binance: {len(df)} candles for {symbol} ({df.index[0]} to {df.index[-1]})")
+    return df
+
+
+def write_tradelog_to_db(result, db_path: str = "trade_log/trades.db"):
+    """Write backtest trades to SQLite trade_log for pretrain_weights.py."""
+    import sqlite3
+    os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else '.', exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT,
+            side TEXT,
+            entry_price REAL,
+            exit_price REAL,
+            pnl_usd REAL,
+            pnl_pct REAL,
+            exit_reason TEXT,
+            composite_score REAL DEFAULT 0.0,
+            signals_fired TEXT,
+            entry_time TEXT,
+            exit_time TEXT
+        )
+    """)
+    try:
+        conn.execute("ALTER TABLE trades ADD COLUMN signals_fired TEXT")
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE trades ADD COLUMN composite_score REAL DEFAULT 0.0")
+    except Exception:
+        pass
+    
+    count = 0
+    for t in result.trades:
+        signals_json = json.dumps(getattr(t, 'signals_fired', {}))
+        composite = getattr(t, 'composite_score', 0.0)
+        conn.execute("""
+            INSERT INTO trades (symbol, side, entry_price, exit_price, pnl_usd, pnl_pct,
+                                exit_reason, composite_score, signals_fired)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            t.symbol, t.side, t.entry_price, t.exit_price,
+            t.pnl_usd, t.pnl_pct, getattr(t, 'exit_reason', ''),
+            composite, signals_json
+        ))
+        count += 1
+    
+    conn.commit()
+    conn.close()
+    logger.info(f"Written {count} trades to {db_path}")
+    return count
 
 
 async def run_backtest(use_real_data=False):
@@ -1035,23 +1338,48 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Run Dina backtest")
     parser.add_argument("--real", action="store_true", help="Use real historical data from Bitget")
+    parser.add_argument("--exchange", choices=["bitget", "binance"], default="bitget",
+                        help="Exchange to fetch data from (default: bitget)")
+    parser.add_argument("--days", type=int, default=90,
+                        help="Number of days to backtest (default: 90)")
+    parser.add_argument("--write-tradelog", action="store_true",
+                        help="Write trades to trade_log/trades.db for pretrain_weights.py")
     args = parser.parse_args()
 
-    if args.real:
-        # Fetch real data from Bitget for all symbols
+    # Adjust START_DATE/END_DATE based on --days
+    END_DATE = datetime.now(timezone.utc) - timedelta(minutes=5)
+    START_DATE = END_DATE - timedelta(days=args.days)
+
+    print(f"Loading data: {args.days} days, exchange: {args.exchange}")
+    
+    if args.real or args.exchange == "binance":
         dfs = {}
         for sym in SYMBOLS:
-            print(f"Загружаю {sym}...")
-            df = fetch_bitget_klines(sym, granularity="4H", limit=1000)
+            print(f"Fetching {sym} from {args.exchange}...")
+            if args.exchange == "binance":
+                df = fetch_binance_klines(sym, interval="4h", days=args.days)
+            else:
+                df = fetch_bitget_klines(sym, granularity="4H", limit=1000)
             if df is not None and len(df) > 50:
                 dfs[sym] = df
             else:
-                logger.warning(f"Failed to fetch {sym}, skipping")
+                logger.warning(f"Failed to fetch {sym} from {args.exchange}, skipping")
+        
         if len(dfs) == 0:
-            logger.error("No data fetched from Bitget, exiting")
+            logger.error(f"No data fetched from {args.exchange}, exiting")
         else:
             bt = Backtester(initial_balance=START_BALANCE)
             result = bt.run(dfs=dfs, symbols=list(dfs.keys()))
             result.print_summary()
+            
+            if args.write_tradelog:
+                n = write_tradelog_to_db(result)
+                print(f"\nSaved {n} trades to trade_log/trades.db")
     else:
-        asyncio.run(run_backtest(use_real_data=False))
+        bt = Backtester(initial_balance=START_BALANCE, use_real_data=False)
+        result = bt.run()
+        result.print_summary()
+        
+        if args.write_tradelog:
+            n = write_tradelog_to_db(result)
+            print(f"\nSaved {n} trades to trade_log/trades.db")

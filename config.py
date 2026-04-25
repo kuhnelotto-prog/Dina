@@ -79,7 +79,7 @@ class TelegramConfig:
 class TradingConfig:
     dry_run: bool = field(default_factory=lambda: _optional("DRY_RUN", "true").lower() == "true")
     starting_balance: float = field(default_factory=lambda: _float("STARTING_BALANCE", 10000))
-    symbols: List[str] = field(default_factory=lambda: _list("SYMBOLS", "BTCUSDT,ETHUSDT,BNBUSDT,XRPUSDT,DOGEUSDT,LINKUSDT,SOLUSDT,AVAXUSDT,ADAUSDT,SUIUSDT"))
+    symbols: List[str] = field(default_factory=lambda: _list("SYMBOLS", "BTCUSDT,ETHUSDT,BNBUSDT,XRPUSDT,DOGEUSDT,LINKUSDT,SOLUSDT,AVAXUSDT,ADAUSDT,SUIUSDT,APEUSDT,ARBUSDT"))
     timeframes: List[str] = field(default_factory=lambda: _list("TIMEFRAMES", "15m,1h,4h"))
     timeframe_weights: List[float] = field(default_factory=lambda: [
         float(x) for x in _list("TIMEFRAME_WEIGHTS", "0.2,0.3,0.5")
@@ -106,8 +106,10 @@ class RiskConfig:
 # Trailing
 # ============================================================
 
-# ── 4-step ATR Trailing Stages (единый источник правды) ──
-# Используется в: trailing_manager.py, backtester.py
+# ── 4-step ATR Trailing Stages ──
+# ⚠️ ВНИМАНИЕ: TRAILING_STAGES используется ТОЛЬКО в trailing_manager.py (живая система).
+# backtester.py с P34 использует ДРУГУЮ логику выхода (TP1/TP2/TSL от пика).
+# Это расхождение нужно устранить перед переходом в продакшен.
 # partial_close_pct = доля ОРИГИНАЛЬНОЙ позиции для закрытия (не текущего остатка!)
 # Система автоматически пересчитывает в долю от текущего остатка.
 TRAILING_STAGES = [
@@ -116,6 +118,14 @@ TRAILING_STAGES = [
     {"stage": 3, "activation_atr": 1.5, "sl_atr": 1.0,  "partial_close_pct": 0.25, "description": "close 25%"},
     {"stage": 4, "activation_atr": 2.0, "sl_atr": None,  "partial_close_pct": 1.0,  "description": "close all"},
 ]
+
+# ── P34: Asymmetric LONG/SHORT parameters ──
+# Используется в: backtester.py. ⚠️ Должно быть синхронизировано с trailing_manager.py перед продакшеном!
+SL_ATR_MULT_LONG = 6.6     # wider SL for longs (survive corrections in staircase pattern)
+SL_ATR_MULT_SHORT = 1.5    # standard SL for shorts
+TSL_ATR_LONG_STEP0 = 0     # disabled: no trailing before TP1 for LONG
+TSL_ATR_LONG_AFTER_TP1 = 2.0  # softer trailing after TP1 for LONG
+TSL_ATR_SHORT = 1.5         # TSL distance for SHORT (from peak)
 
 
 @dataclass

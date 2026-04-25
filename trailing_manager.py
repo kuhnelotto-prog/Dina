@@ -68,6 +68,8 @@ class TrailingManager:
         initial_sl: float,
         current_price: float,
         atr_value: float = 0.0,
+        current_step: Optional[int] = None,
+        remaining_pct: Optional[float] = None,
     ) -> bool:
         """
         Проверяет и обновляет трейлинг-стоп по 4-этапной ATR-логике.
@@ -79,6 +81,8 @@ class TrailingManager:
             initial_sl: Начальный стоп-лосс
             current_price: Текущая рыночная цена (markPrice)
             atr_value: ATR (если 0 — используем сохранённый при регистрации)
+            current_step: Текущий шаг из PositionInfo (синхронизация после рестарта)
+            remaining_pct: Текущий остаток из PositionInfo
             
         Returns:
             True если позиция была полностью закрыта (шаг 4)
@@ -88,6 +92,16 @@ class TrailingManager:
             # Авто-регистрация если не было
             self.register_position(symbol, initial_sl, atr_value)
             state = self._state[symbol]
+            if current_step is not None:
+                state["trailing_step"] = current_step
+            if remaining_pct is not None:
+                state["remaining_pct"] = remaining_pct
+
+        # Синхронизация шага (важно при рестарте)
+        if current_step is not None and current_step > state["trailing_step"]:
+            state["trailing_step"] = current_step
+        if remaining_pct is not None:
+            state["remaining_pct"] = remaining_pct
 
         current_sl = state["current_sl"]
         step = state["trailing_step"]
@@ -95,9 +109,9 @@ class TrailingManager:
         # ATR: используем сохранённый при регистрации, или переданный
         atr = atr_value if atr_value > 0 else state.get("atr_value", 0)
         
-        # Fallback: если ATR не задан, используем risk (расстояние до SL) как proxy
+        # Fallback: если ATR не задан, используем risk (расстояние до SL) / 1.5 как proxy
         if atr <= 0:
-            atr = abs(entry_price - initial_sl)
+            atr = abs(entry_price - initial_sl) / 1.5
         
         if atr <= 0:
             return False

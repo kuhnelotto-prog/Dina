@@ -19,8 +19,7 @@ logging.basicConfig(level=logging.WARNING)
 from backtester import Backtester, BacktestPosition, BacktestResult
 from indicators_calc import IndicatorsCalculator
 
-SYMBOLS = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "LINKUSDT", "SOLUSDT",
-           "BNBUSDT", "ADAUSDT", "AVAXUSDT", "ARBUSDT", "DOTUSDT"]
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "LINKUSDT", "SOLUSDT", "AVAXUSDT", "ADAUSDT", "SUIUSDT"]
 
 TRAIN_START = datetime(2026, 1, 12)
 TRAIN_END = datetime(2026, 4, 12)
@@ -118,11 +117,11 @@ def run_multi_backtest(data_dict, btc_df, btc_1d, max_positions, symbols):
         "bb_squeeze": 0.3, "sweep": 0.7,
     }
     
-    # Thresholds
+    # Thresholds (synced with strategist_client.py)
     THRESHOLD_LONG_BULL = 0.20
     THRESHOLD_LONG_BEAR = 0.30
-    THRESHOLD_SHORT_BULL = 0.35
-    THRESHOLD_SHORT_BEAR = 0.35
+    THRESHOLD_SHORT_BULL = 0.45   # synced: stricter shorts on bull market
+    THRESHOLD_SHORT_BEAR = 0.35   # synced: more aggressive shorts on bear market
     
     # BTC EMA50 for regime
     btc_ema50 = btc_df['close'].ewm(span=50, adjust=False).mean() if len(btc_df) >= 50 else None

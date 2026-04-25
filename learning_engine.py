@@ -5,7 +5,9 @@ learning_engine.py
 """
 
 import asyncio
+import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Set, Tuple
@@ -25,6 +27,11 @@ DEFAULT_WEIGHTS: Dict[str, float] = {
     "macd": 1.0,
     "bb": 1.0,
     "trend": 1.0,
+    "ema_cross": 1.0,
+    "engulfing": 1.0,
+    "fvg": 1.0,
+    "sweep": 1.0,
+    "volume_spike": 1.0,
     "onchain": 1.0,
     "whale": 1.0,
     "macro": 1.0,
@@ -167,6 +174,41 @@ class LearningEngine:
             arrow = "↑" if delta > 0.02 else "↓" if delta < -0.02 else "="
             lines.append(f"{src:<10} {current:.2f} {arrow} ({delta:+.3f})")
         return "\n".join(lines)
+
+    # ============================================================
+    # Pre-trained weights loader
+    # ============================================================
+
+    def load_pretrained(self, path: str = "pretrained_weights.json") -> bool:
+        """
+        Load calibrated weights from pretrained_weights.json.
+        Call during bot initialization BEFORE first trade.
+        Returns True if weights loaded, False if file not found
+        or neutral=true (keep defaults).
+        """
+        if not os.path.exists(path):
+            logger.info(f"pretrained_weights.json not found — using defaults")
+            return False
+
+        with open(path) as f:
+            data = json.load(f)
+
+        if data.get("neutral", True):
+            logger.info(f"pretrained_weights.json: neutral=true, "
+                        f"{data.get('trades_used', 0)} trades — using defaults")
+            return False
+
+        loaded = data.get("weights", {})
+        applied = 0
+        for source, weight in loaded.items():
+            if source in self._weights.weights:
+                self._weights.weights[source] = weight
+                applied += 1
+
+        logger.info(f"Loaded pretrained weights from {path} "
+                    f"({data.get('trades_used')} trades, {applied} sources applied): "
+                    f"{self._weights}")
+        return True
 
     # ============================================================
     # Внутренние методы

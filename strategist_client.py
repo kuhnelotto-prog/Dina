@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 #   BTC price < EMA50 → bearish: LONG консервативнее, SHORT агрессивнее
 
 # LONG пороги по режиму BTC:
-ENTRY_THRESHOLD_LONG_BULL = 0.20      # bullish → агрессивнее (P3 tuned, was 0.30)
-ENTRY_THRESHOLD_LONG_BEAR = 0.30      # bearish → консервативнее (P3 tuned, was 0.45)
+ENTRY_THRESHOLD_LONG_BULL = 0.30      # bullish → умеренный вход
+ENTRY_THRESHOLD_LONG_BEAR = 0.40      # bearish → консервативный вход
 
 # SHORT пороги по режиму BTC:
 ENTRY_THRESHOLD_SHORT_BULL = 0.45     # bullish → строже на бычьем рынке (шорт против тренда)

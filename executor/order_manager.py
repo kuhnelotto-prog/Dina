@@ -31,11 +31,21 @@ class OrderManager:
         self._positions = positions
         self._db_path = db_path
 
-    def calc_quantity(self, size_usd: float, price: float) -> float:
-        """Рассчитывает количество контрактов."""
+    # Точность лотов по символам (Bitget требует определённое кол-во знаков после запятой)
+    QTY_PRECISIONS = {
+        "BTCUSDT": 3, "ETHUSDT": 2, "BNBUSDT": 2, "SOLUSDT": 2,
+        "XRPUSDT": 0, "DOGEUSDT": 0, "ADAUSDT": 0, "LINKUSDT": 1,
+        "AVAXUSDT": 1, "SUIUSDT": 1,
+        "APEUSDT": 0, "ARBUSDT": 1,  # P34: added missing symbols
+    }
+
+    def calc_quantity(self, size_usd: float, price: float, symbol: str = "") -> float:
+        """Рассчитывает количество контрактов с учётом точности лота."""
         if price <= 0:
             return 0.0
-        return round(size_usd / price, 6)
+        raw = size_usd / price
+        precision = self.QTY_PRECISIONS.get(symbol, 3)  # default 3 знака
+        return round(raw, precision)
 
     async def open_position(self, req) -> Any:
         """

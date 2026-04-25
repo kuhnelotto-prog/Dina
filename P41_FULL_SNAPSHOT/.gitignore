@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Temp files
+temp/
+tmp/
+
+# Backtest results (all JSON output files)
+*.json
+
+# Results/analysis text files
+*.txt
+!requirements.txt
+
+# Test environment file
+test_env.txt
+
+# Environment files with secrets
+.env
+
+# Debug/temp scripts
+debug_*.py
+quick_*.py
+final_*test.py
+analyze_*.py
+test_env.py
+
+# Audit/temp reports
+AUDIT_FULL.md
+audit_*.md
+adx*_validation_report.md
+technical_audit_report.md
