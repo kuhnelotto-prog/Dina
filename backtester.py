@@ -18,7 +18,11 @@ import requests
 import time
 
 from indicators_calc import IndicatorsCalculator
-from config import TRAILING_STAGES  # единый источник правды (shared with trailing_manager.py)
+from config import TRAILING_STAGES  # deprecated, kept for reference
+from config import SL_ATR_MULT_LONG as CFG_SL_ATR_MULT_LONG
+from config import SL_ATR_MULT_SHORT as CFG_SL_ATR_MULT_SHORT
+from config import TSL_ATR_LONG_AFTER_TP1 as CFG_TSL_ATR_LONG_AFTER_TP1
+from config import TSL_ATR_SHORT as CFG_TSL_ATR_SHORT
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,11 +61,12 @@ SLIPPAGE_PCT = 0.0005     # 0.05% slippage на market ордера
 FUNDING_RATE = 0.0001     # 0.01% каждые 8 часов
 FUNDING_INTERVAL_H = 8   # интервал funding в часах
 
-# ── P34: Asymmetric LONG/SHORT parameters ──
-SL_ATR_MULT_LONG = 6.6    # wider SL for longs (survive corrections in staircase pattern)
-SL_ATR_MULT_SHORT = 1.5  # standard SL for shorts
+# ── P34: Asymmetric LONG/SHORT parameters (from config.py — single source of truth) ──
+SL_ATR_MULT_LONG = CFG_SL_ATR_MULT_LONG      # wider SL for longs
+SL_ATR_MULT_SHORT = CFG_SL_ATR_MULT_SHORT    # standard SL for shorts
 TSL_ATR_LONG_STEP0 = 0   # disabled: no trailing before TP1 for LONG (give room to breathe)
-TSL_ATR_LONG_AFTER_TP1 = 2.0  # softer trailing after TP1 for LONG
+TSL_ATR_LONG_AFTER_TP1 = CFG_TSL_ATR_LONG_AFTER_TP1  # softer trailing after TP1 for LONG
+TSL_ATR_SHORT = CFG_TSL_ATR_SHORT    # TSL distance for SHORT (from peak)
 DAILY_LOSS_LIMIT_PCT = 5.0  # 5% дневной лимит потерь
 MAX_PORTFOLIO_VAR_PCT = 15.0  # максимум 15% портфеля под риском (VaR)
 MAX_SHORT_OPEN = 3           # не более 3 шортов одновременно
@@ -244,14 +249,14 @@ class BacktestPosition:
             if step < 2 and atr_move >= 2.0:
                 self.trailing_step = 2
                 self._partial_close(0.30 / max(self.remaining_pct, 0.01), close)
-                new_sl = self.peak_price + 1.5 * ATR
+                new_sl = self.peak_price + TSL_ATR_SHORT * ATR
                 if new_sl < self.sl_price:
                     self.sl_price = new_sl
                 logger.debug(f"  TP2 (SHORT): {self.symbol} close 30% at +2 ATR, TSL from peak={self.peak_price:.2f}")
             
             # After TP2 (or TP1): TSL from peak
             if self.trailing_step >= 1:
-                tsl = self.peak_price + 1.5 * ATR
+                tsl = self.peak_price + TSL_ATR_SHORT * ATR
                 if tsl < self.sl_price:
                     self.sl_price = tsl
             

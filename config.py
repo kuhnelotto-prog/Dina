@@ -84,7 +84,7 @@ class TradingConfig:
     timeframe_weights: List[float] = field(default_factory=lambda: [
         float(x) for x in _list("TIMEFRAME_WEIGHTS", "0.2,0.3,0.5")
     ])
-    leverage: int = field(default_factory=lambda: _int("LEVERAGE", 3))
+    leverage: int = field(default_factory=lambda: _int("LEVERAGE", 10))
     db_path: str = field(default_factory=lambda: _optional("DB_PATH", "dina.db"))
 
 

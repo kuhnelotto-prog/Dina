@@ -80,10 +80,8 @@ class RiskManager:
             "L1": ["BTCUSDT", "ETHUSDT"],
             "L2": ["BNBUSDT"],              # BNB Chain L2
             "DeFi": ["LINKUSDT"],
-            "AI": [],                       # зарезервировано
-            "Gaming": [],                   # зарезервировано
-            "Infra": ["AVAXUSDT"],          # Avalanche Subnets
-            "Meme": ["DOGEUSDT"],
+            "Meme": ["DOGEUSDT", "APEUSDT"],
+            "Infra": ["AVAXUSDT", "ARBUSDT"],
             "Alt_L1": ["XRPUSDT", "SOLUSDT", "ADAUSDT", "SUIUSDT"],
         }
 
