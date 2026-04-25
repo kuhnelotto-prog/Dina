@@ -7,10 +7,11 @@ LONG (P34):
   - TP2 at +2 ATR: close 30%, TSL from peak at TSL_ATR_LONG_AFTER_TP1*ATR
   - After TP1+: TSL continues from peak at TSL_ATR_LONG_AFTER_TP1*ATR
 
-SHORT (P8 standard):
-  - TP1 at +1 ATR: close 30%, SL to breakeven + 0.5*ATR
-  - TP2 at +2 ATR: close 30%, TSL from peak at TSL_ATR_SHORT*ATR
-  - After TP1+: TSL continues from peak at TSL_ATR_SHORT*ATR
+SHORT (P38+P8 hybrid — 4-step with breakeven):
+  - Step 0: +0.5 ATR → breakeven (SL to entry, NO partial close)
+  - Step 1: +1.0 ATR → close 30%, SL to entry + 0.5*ATR
+  - Step 2: +2.0 ATR → close 30%, TSL from peak at TSL_ATR_SHORT*ATR
+  - After Step 1+: TSL continues from peak at TSL_ATR_SHORT*ATR
 
 ATR берётся из сигнала при входе (atr_value) и фиксируется на весь трейд.
 Конфигурация: из config.py (SL_ATR_MULT_LONG, TSL_ATR_LONG_AFTER_TP1, TSL_ATR_SHORT).
@@ -246,12 +247,28 @@ class TrailingManager:
                     new_sl = tsl
 
         # ══════════════════════════════════════
-        # SHORT positions — P8 standard logic
+        # SHORT positions — P38+P8 hybrid (4-step with breakeven)
         # ══════════════════════════════════════
         else:
-            # TP1 at +1 ATR: close 30%, SL to breakeven + 0.5 ATR
-            if step < 1 and atr_move >= 1.0:
+            # Step 0: +0.5 ATR → breakeven (SL to entry) — NO partial close, just move SL
+            if step < 1 and atr_move >= 0.5:
                 new_step = 1
+                new_sl = entry_price  # breakeven
+                if new_sl < current_sl:
+                    current_sl = new_sl
+                logger.info(
+                    f"📉 {symbol} SHORT Breakeven: SL→entry={new_sl:.4f} at +0.5 ATR"
+                )
+                if self.bot:
+                    await self.bot._send(
+                        f"📉 {symbol} SHORT Breakeven: +0.5 ATR\n"
+                        f"SL: {new_sl:.4f}"
+                    )
+                event_logger.trailing_stop_moved(symbol, current_sl, new_sl, step=1)
+
+            # Step 1: +1.0 ATR → close 30%, SL to entry + 0.5 ATR
+            if step < 2 and atr_move >= 1.0:
+                new_step = 2
                 new_sl = entry_price + 0.5 * atr
                 if new_sl < current_sl:
                     current_sl = new_sl
@@ -267,7 +284,7 @@ class TrailingManager:
                     self.risk_manager.update_position_size(symbol, remaining_pct=state.get("remaining_pct", 1.0))
                 logger.info(
                     f"📉 {symbol} SHORT TP1: close 30% at +1 ATR, "
-                    f"SL→breakeven+0.5ATR={new_sl:.4f}"
+                    f"SL→entry+0.5ATR={new_sl:.4f}"
                 )
                 if self.bot:
                     await self.bot._send(
@@ -275,11 +292,11 @@ class TrailingManager:
                         f"SL: {new_sl:.4f}\n"
                         f"Remaining: {state['remaining_pct']*100:.0f}%"
                     )
-                event_logger.trailing_stop_moved(symbol, current_sl, new_sl, step=1)
+                event_logger.trailing_stop_moved(symbol, current_sl, new_sl, step=2)
 
-            # TP2 at +2 ATR: close 30%, TSL from peak at 1.5 ATR
-            if step < 2 and atr_move >= 2.0:
-                new_step = 2
+            # Step 2: +2.0 ATR → close 30%, TSL from peak
+            if step < 3 and atr_move >= 2.0:
+                new_step = 3
                 remaining = state.get("remaining_pct", 0.7)
                 if remaining > 0:
                     pct_of_current = self.TP2_CLOSE_PCT / max(remaining, 0.01)
@@ -305,10 +322,10 @@ class TrailingManager:
                         f"TSL: {new_sl:.4f} (from peak {peak_price:.4f})\n"
                         f"Remaining: {state.get('remaining_pct', 0.4)*100:.0f}%"
                     )
-                event_logger.trailing_stop_moved(symbol, current_sl, new_sl, step=2)
+                event_logger.trailing_stop_moved(symbol, current_sl, new_sl, step=3)
 
-            # After TP1+: continuous TSL from peak
-            if new_step >= 1 or state.get("trailing_step", 0) >= 1:
+            # After Step 1+: continuous TSL from peak
+            if new_step >= 2 or state.get("trailing_step", 0) >= 2:
                 tsl = peak_price + TSL_ATR_SHORT * atr
                 if tsl < current_sl:
                     current_sl = tsl
