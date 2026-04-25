@@ -236,34 +236,26 @@ class BacktestPosition:
         # SHORT positions — P8 standard logic
         # ══════════════════════════════════════
         else:
-            # Step 0: +0.5 ATR → breakeven (SL to entry) — protects SHORT from reversal
-            if step < 1 and atr_move >= 0.5:
+            # TP1 at +1 ATR: close 30%, SL to breakeven + 0.5 ATR
+            if step < 1 and atr_move >= 1.0:
                 self.trailing_step = 1
-                new_sl = self.entry_price  # breakeven
-                if new_sl < self.sl_price:
-                    self.sl_price = new_sl
-                logger.debug(f"  Breakeven (SHORT): {self.symbol} at +0.5 ATR, SL->entry={new_sl:.2f}")
-            
-            # Step 1: +1.0 ATR → close 30%, SL to entry + 0.5 ATR
-            if step < 2 and atr_move >= 1.0:
-                self.trailing_step = 2
                 new_sl = self.entry_price + 0.5 * ATR
                 if new_sl < self.sl_price:
                     self.sl_price = new_sl
                 self._partial_close(0.30, close)
-                logger.debug(f"  TP1 (SHORT): {self.symbol} close 30% at +1 ATR, SL->entry+0.5ATR={new_sl:.2f}")
+                logger.debug(f"  TP1 (SHORT): {self.symbol} close 30% at +1 ATR, SL->breakeven+0.5ATR={new_sl:.2f}")
             
-            # Step 2: +2.0 ATR → close 30%, TSL from peak
-            if step < 3 and atr_move >= 2.0:
-                self.trailing_step = 3
+            # TP2 at +2 ATR: close 30%, TSL from peak at 1.5 ATR
+            if step < 2 and atr_move >= 2.0:
+                self.trailing_step = 2
                 self._partial_close(0.30 / max(self.remaining_pct, 0.01), close)
                 new_sl = self.peak_price + TSL_ATR_SHORT * ATR
                 if new_sl < self.sl_price:
                     self.sl_price = new_sl
                 logger.debug(f"  TP2 (SHORT): {self.symbol} close 30% at +2 ATR, TSL from peak={self.peak_price:.2f}")
             
-            # After Step 1+: TSL from peak
-            if self.trailing_step >= 2:
+            # After TP2 (or TP1): TSL from peak
+            if self.trailing_step >= 1:
                 tsl = self.peak_price + TSL_ATR_SHORT * ATR
                 if tsl < self.sl_price:
                     self.sl_price = tsl
