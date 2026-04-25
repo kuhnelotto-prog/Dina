@@ -17,6 +17,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+# Single source of truth for leverage
+from config import settings as _settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,8 +54,8 @@ class SizerConfig:
     # Kelly fraction (0 = выключен)
     kelly_fraction: float = 0.25
 
-    # Плечо (умножение размера позиции)
-    leverage: int = 1
+    # Плечо (умножение размера позиции) — synced with config.LEVERAGE
+    leverage: int = field(default_factory=lambda: getattr(_settings, 'trading', type('obj', (), {'leverage': 10}))().leverage if hasattr(_settings, 'trading') else 10)
 
 
 @dataclass
