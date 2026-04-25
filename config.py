@@ -175,7 +175,7 @@ class OptionalAPIsConfig:
 @dataclass
 class SafetyConfig:
     max_fast_drawdown_pct: float = field(default_factory=lambda: _float("MAX_FAST_DRAWDOWN_PCT", 3.0))
-    max_position_age_hours: float = field(default_factory=lambda: _float("MAX_POSITION_AGE_HOURS", 48.0))
+    max_position_age_hours: float = field(default_factory=lambda: _float("MAX_POSITION_AGE_HOURS", 96.0))  # synced with backtester POSITION_TIMEOUT_H
     heartbeat_timeout_sec: int = field(default_factory=lambda: _int("HEARTBEAT_TIMEOUT_SEC", 60))
     dry_run: bool = field(default_factory=lambda: _optional("SAFETY_GUARD_DRY_RUN", "true").lower() == "true")
 

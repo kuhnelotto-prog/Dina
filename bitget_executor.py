@@ -138,13 +138,15 @@ class OrderResult:
 
 
 @dataclass
+from config import settings as _settings
+
 class PositionInfo:
     symbol: str
     side: PositionSide
     size: float = 0.0
     avg_price: float = 0.0
     unrealized_pnl: float = 0.0
-    leverage: int = 1
+    leverage: int = field(default_factory=lambda: _settings.trading.leverage)
     margin: float = 0.0
     trade_id: str = ""
     initial_sl: float = 0.0

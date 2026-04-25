@@ -23,6 +23,10 @@ from config import SL_ATR_MULT_LONG as CFG_SL_ATR_MULT_LONG
 from config import SL_ATR_MULT_SHORT as CFG_SL_ATR_MULT_SHORT
 from config import TSL_ATR_LONG_AFTER_TP1 as CFG_TSL_ATR_LONG_AFTER_TP1
 from config import TSL_ATR_SHORT as CFG_TSL_ATR_SHORT
+from config import settings as _settings
+
+# Timeout from config (single source of truth)
+POSITION_TIMEOUT_H = _settings.safety.max_position_age_hours
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,9 +58,8 @@ class ADXFilter:
 
 START_BALANCE = 10000.0
 BASE_RISK_PCT = 1.0      # % баланса на риск за сделку (как в PositionSizer)
-# LEVERAGE теперь берётся из config.py — единый источник правды
-from config import settings as _settings
-LEVERAGE = _settings.trading.leverage  # плечо (из config, по умолчанию 3)
+# LEVERAGE уже импортирован выше из _settings
+LEVERAGE = _settings.trading.leverage
 SLIPPAGE_PCT = 0.0005     # 0.05% slippage на market ордера
 FUNDING_RATE = 0.0001     # 0.01% каждые 8 часов
 FUNDING_INTERVAL_H = 8   # интервал funding в часах
@@ -75,7 +78,7 @@ SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "SOLUSDT", "LINKUSDT", "D
 ATR_CRISIS_MULTIPLIER = 3.0   # ATR > 3× среднего → CRISIS
 ATR_VOLATILE_MULTIPLIER = 2.0  # ATR > 2× среднего → VOLATILE
 VOLATILE_SIZE_REDUCTION = 0.5  # при VOLATILE: размер позиции × 0.5
-POSITION_TIMEOUT_H = 96        # максимум 96 часов в позиции
+# POSITION_TIMEOUT_H уже импортирован из config.py выше
 MIN_EXPECTED_PNL_PCT = -0.5   # закрыть если PnL < -0.5% после 48ч
 MIN_PNL_CHECK_H = 48          # проверять PnL после 48ч (SHORT)
 # P36: LONG-specific MIN_PNL parameters (overridable from scripts)
