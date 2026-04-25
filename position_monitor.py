@@ -16,6 +16,7 @@ import time
 from typing import Dict, Optional
 
 from trailing_manager import TrailingManager
+from config import SL_ATR_MULT_LONG, SL_ATR_MULT_SHORT
 import event_logger
 
 logger = logging.getLogger(__name__)
@@ -131,20 +132,23 @@ class PositionMonitor:
 
         logger.info(f"✅ Новая позиция: {side} {symbol} {size} @ {entry}")
 
-        # Вычисляем ATR из SL distance: SL = entry ± 1.5×ATR → ATR = SL_distance / 1.5
-        # (synced with strategist_client: sl_pct = atr_pct * 1.5)
+        # Вычисляем ATR из SL distance, используя side-aware multiplier
+        # SL = entry ± SL_ATR_MULT × ATR → ATR = SL_distance / SL_ATR_MULT
         atr_value = 0.0
+        side_lower = side.lower() if side else "long"
+        sl_mult = SL_ATR_MULT_LONG if side_lower == "long" else SL_ATR_MULT_SHORT
         if initial_sl > 0 and entry > 0:
             sl_distance = abs(entry - initial_sl)
-            atr_value = sl_distance / 1.5
+            atr_value = sl_distance / sl_mult
         elif entry > 0:
             # Fallback: если SL неизвестен, оцениваем ATR как 1.5% от цены
             atr_value = entry * 0.015
             logger.warning(f"{symbol}: SL неизвестен, ATR fallback = {atr_value:.4f} (1.5% от entry)")
 
-        # Регистрируем в TrailingManager (передаём ATR для корректных этапов)
+        # Регистрируем в TrailingManager (передаём side и entry_price для P8+P34 logic)
         if initial_sl > 0:
-            self.trailing.register_position(symbol, initial_sl, atr_value=atr_value)
+            self.trailing.register_position(symbol, initial_sl, atr_value=atr_value,
+                                           side=side_lower, entry_price=entry)
 
         # Telegram
         if self.bot:
@@ -260,11 +264,13 @@ class PositionMonitor:
         if current_price <= 0 or entry_price <= 0 or initial_sl <= 0:
             return
 
-        # Вычисляем ATR из SL distance (если ещё не закэширован при регистрации)
-        # SL = entry ± 1.5×ATR → ATR = SL_distance / 1.5
+        # Вычисляем ATR из SL distance, используя side-aware multiplier
+        # SL = entry ± SL_ATR_MULT × ATR → ATR = SL_distance / SL_ATR_MULT
+        side_lower = side.lower() if side else "long"
+        sl_mult = SL_ATR_MULT_LONG if side_lower == "long" else SL_ATR_MULT_SHORT
         sl_distance = abs(entry_price - initial_sl)
         if sl_distance > 0:
-            atr_value = sl_distance / 1.5
+            atr_value = sl_distance / sl_mult
         elif entry_price > 0:
             # Fallback: если SL distance = 0, оцениваем ATR как 1.5% от цены
             atr_value = entry_price * 0.015

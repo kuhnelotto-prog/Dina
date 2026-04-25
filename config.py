@@ -106,12 +106,9 @@ class RiskConfig:
 # Trailing
 # ============================================================
 
-# ── 4-step ATR Trailing Stages ──
-# ⚠️ ВНИМАНИЕ: TRAILING_STAGES используется ТОЛЬКО в trailing_manager.py (живая система).
-# backtester.py с P34 использует ДРУГУЮ логику выхода (TP1/TP2/TSL от пика).
-# Это расхождение нужно устранить перед переходом в продакшен.
-# partial_close_pct = доля ОРИГИНАЛЬНОЙ позиции для закрытия (не текущего остатка!)
-# Система автоматически пересчитывает в долю от текущего остатка.
+# ── DEPRECATED: 4-step ATR Trailing Stages ──
+# ⚠️ TRAILING_STAGES больше НЕ используется в trailing_manager.py (P8+P34 logic заменяет).
+# Оставлено для обратной совместимости — НЕ УДАЛЯТЬ без проверки всех импортов.
 TRAILING_STAGES = [
     {"stage": 1, "activation_atr": 0.5, "sl_atr": 0.0,  "partial_close_pct": 0.0,  "description": "breakeven"},
     {"stage": 2, "activation_atr": 1.0, "sl_atr": 0.5,  "partial_close_pct": 0.25, "description": "close 25%"},

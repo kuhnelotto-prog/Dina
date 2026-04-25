@@ -50,7 +50,9 @@ class ADXFilter:
 
 START_BALANCE = 10000.0
 BASE_RISK_PCT = 1.0      # % баланса на риск за сделку (как в PositionSizer)
-LEVERAGE = 10             # плечо (как в живой системе)
+# LEVERAGE теперь берётся из config.py — единый источник правды
+from config import settings as _settings
+LEVERAGE = _settings.trading.leverage  # плечо (из config, по умолчанию 3)
 SLIPPAGE_PCT = 0.0005     # 0.05% slippage на market ордера
 FUNDING_RATE = 0.0001     # 0.01% каждые 8 часов
 FUNDING_INTERVAL_H = 8   # интервал funding в часах

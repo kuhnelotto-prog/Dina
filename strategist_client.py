@@ -17,6 +17,7 @@ from risk_manager import RiskManager, PortfolioState, RiskStatus
 from bitget_executor import BitgetExecutor, OrderRequest, OrderType
 from performance_attribution import PerformanceAttribution, SignalSource
 from telegram_bot import DinaBot
+from config import SL_ATR_MULT_LONG, SL_ATR_MULT_SHORT
 
 logger = logging.getLogger(__name__)
 
@@ -220,9 +221,11 @@ class StrategistClient:
             )
             return
 
-        # ── SL/TP по ATR ──
+        # ── SL/TP по ATR (P34: asymmetric LONG/SHORT multipliers) ──
         atr_pct = signal.get("atr_pct", 1.0)
-        sl_pct = atr_pct * 1.5
+        # SL multiplier: LONG=6.6 (wide, survive corrections), SHORT=1.5 (standard)
+        sl_mult = SL_ATR_MULT_LONG if side == "long" else SL_ATR_MULT_SHORT
+        sl_pct = atr_pct * sl_mult
         tp_pct = atr_pct * 2.0  # TP привязан к ATR напрямую, синхронизирован с трейлинг-этапом 4 (2.0 ATR)
 
         if side == "long":
